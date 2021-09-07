@@ -224,7 +224,7 @@ After adding the appropriate DNS entires, run the following commands:
   
   
 
-Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in > 90 days***.
+Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in < than 90 days***.
 
   
 
