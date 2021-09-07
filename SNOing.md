@@ -63,7 +63,7 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
   
 
-7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on cloud.redhat.com. Please make sure to change the hostname to something other than localhost.
+7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com](https://cloud.redhat.com). Please make sure to change the hostname to something other than localhost.
 
   
 
