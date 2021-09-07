@@ -27,7 +27,7 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
   
 
-1. Log into cloud.redhat.com with your Red Hat account.
+1. Log into [cloud.redhat.com](https://cloud.redhat.com) with your Red Hat account.
 
   
 
