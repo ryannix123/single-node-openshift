@@ -228,15 +228,15 @@ Create the TXT create that Certbot needs to validate domain ownership, then pres
 
   
 
-Successfully received certificate.
+`Successfully received certificate.`
 
-Certificate is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem
+`Certificate is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem`
 
-Key is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem
+`Key is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem`
 
-This certificate expires on 2021-12-06.
+`This certificate expires on 2021-12-06.`
 
-These files will be updated when the certificate renews.
+`These files will be updated when the certificate renews.`
 
   
 
