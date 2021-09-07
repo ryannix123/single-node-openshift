@@ -105,7 +105,7 @@ Run the following command to confirm you can list cluster resources:
 
   
 
-# Add a non-admin account to your system
+# Add a non-admin account to your OpenShift system
 
   
 
