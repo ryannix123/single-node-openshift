@@ -252,21 +252,21 @@ Finally, let's run the following commands to upload our certs and properly secur
 
   
 
-oc create configmap letsencrypt-ca-20211206 \
-     --from-file=ca-bundle.crt=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \
-     -n openshift-config
+`oc create configmap letsencrypt-ca-20211206 \`
+     `--from-file=ca-bundle.crt=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \`
+     `-n openshift-config`
 
-oc patch proxy/cluster \
-     --type=merge \
-     --patch='{"spec":{"trustedCA":{"name":"letsencrypt-ca-20211206"}}}'
+`oc patch proxy/cluster \`
+     `--type=merge \`
+     `--patch='{"spec":{"trustedCA":{"name":"letsencrypt-ca-20211206"}}}'`
 
-oc create secret tls letsencrypt-ca-secret-20211206 \
-     --cert=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \
-     --key=/etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem \
-     -n openshift-ingress
+`oc create secret tls letsencrypt-ca-secret-20211206 \`
+     `--cert=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \`
+     `--key=/etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem \`
+     `-n openshift-ingress`
 
-oc patch ingresscontroller.operator default \
-     --type=merge -p \
-     '{"spec":{"defaultCertificate": {"name": "letsencrypt-ca-secret-20211206"}}}' \
-     -n openshift-ingress-operator
+`oc patch ingresscontroller.operator default \`
+     `--type=merge -p \`
+     `'{"spec":{"defaultCertificate": {"name": "letsencrypt-ca-secret-20211206"}}}' \`
+     `-n openshift-ingress-operator`
 
