@@ -57,31 +57,31 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
   
 
-6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you need
+6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you will need it later in the installation process. Add your ssh public when prompted. e.g., cat ~/.ssh/id_ed25519.pub | pbcopy
 
   
 
   
 
-7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com](https://cloud.redhat.com). Please make sure to change the hostname to something other than localhost.
+7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com](https://cloud.redhat.com). The WebUI will force you to change the hostname to something other than localhost. Select the appropriate network range when prompted by the installer.
 
   
 
   
 
-8. When the installation is finished, download the Kubeconfig file and make a note of the kubeadmin password.
+8. When the installation is finished, download the Kubeconfig file and make a note of the kubeadmin password listed in the portal.
 
   
 
   
 
-9. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/) and download the client appropriate for your system.
+9. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/) and download the client appropriate for your system. Make sure to download the client version that corresponds to the version of OpenShift that you are running. e.g. If you're using OCP 4.8.9, make sure to download the matching client version.
 
   
 
   
 
-10. After downloading and installing the OpenShift command line tool, set the KUBECONFIG environment variable and test the connection:
+10. After downloading and installing the OpenShift command line tool and Kubeconfig from [cloud.redhat.com](https://cloud.redhat.com), set the KUBECONFIG environment variable to the location of your Kubeconfig, then test the connection:
 
   
 
@@ -100,7 +100,6 @@ Run the following command to confirm you can list cluster resources:
   
 
 `oc get nodes`
-
   
 
   
