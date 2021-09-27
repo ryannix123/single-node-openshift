@@ -129,13 +129,8 @@ You should be set to access your instance of Single Node OpenShfit with a Let's 
 
 From the command line on either you local system, run the follow command as Kubeadmin:
 
-`nodes=$(oc get nodes -o jsonpath='{.items[*].metadata.name}')`\
+`for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug node/${node} -- chroot /host shutdown -h 1; done`
 
-`for node in ${nodes[@]}`  
-`do`  
-    `echo "==== Shut down $node ===="`  
-    `ssh core@$node sudo shutdown -h 1`  
-`done`
 
 You may need to modify the `/etc/hosts` file on your system so that your system is aware of the SNO instance. e.g., `192.168.0.19 sno`
 
