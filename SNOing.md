@@ -87,15 +87,13 @@ certbot -d '*.apps.ocp.mydomain.com' --manual --preferred-challenges dns certonl
 
 Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in < than 90 days***.
 
-`Successfully received certificate.`
-
-`Certificate is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem`
-
-`Key is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem`
-
-`This certificate expires on 2021-12-06.`
-
-`These files will be updated when the certificate renews.`
+```shell
+Successfully received certificate.
+Certificate is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem
+Key is saved at: /etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem
+This certificate expires on 2021-12-06.
+These files will be updated when the certificate renews.
+```
 
 Now we have the certificates necessary to replace the default certs for OpenShift's [ingress](https://docs.openshift.com/container-platform/4.8/security/certificates/replacing-default-ingress-certificate.html).
 
@@ -103,23 +101,25 @@ Switch to to the root user and login to the cluster as kubadmin. It's necessary 
 
 Finally, let's run the following commands to upload our certs and properly secure our instance of OpenShift!
 
-`oc create configmap letsencrypt-ca-20211206 \
+```shell
+oc create configmap letsencrypt-ca-20211206 \
      --from-file=ca-bundle.crt=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \
-     -n openshift-config`
+     -n openshift-config
 
-`oc patch proxy/cluster \`
-     `--type=merge \`
-     `--patch='{"spec":{"trustedCA":{"name":"letsencrypt-ca-20211206"}}}'`
+oc patch proxy/cluster \
+     --type=merge \
+     --patch='{"spec":{"trustedCA":{"name":"letsencrypt-ca-20211206"}}}'
 
-`oc create secret tls letsencrypt-ca-secret-20211206 \`
-     `--cert=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \`
-     `--key=/etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem \`
-     `-n openshift-ingress`
+oc create secret tls letsencrypt-ca-secret-20211206 \
+     --cert=/etc/letsencrypt/live/apps.ocp.mydomain.com/fullchain.pem \
+     --key=/etc/letsencrypt/live/apps.ocp.mydomain.com/privkey.pem \
+     -n openshift-ingress
 
-`oc patch ingresscontroller.operator default \`
-     `--type=merge -p \`
-     `'{"spec":{"defaultCertificate": {"name": "letsencrypt-ca-secret-20211206"}}}' \`
-     `-n openshift-ingress-operator`
+oc patch ingresscontroller.operator default \
+     --type=merge -p \
+     '{"spec":{"defaultCertificate": {"name": "letsencrypt-ca-secret-20211206"}}}' \
+     -n openshift-ingress-operator
+```
 
 You should be set to access your instance of Single Node OpenShfit with a Let's Encrypt certificate. You can also deploy an application, perferrably with the non-Kubeadmin user we created, with a certifcate that is secure by default!
 
