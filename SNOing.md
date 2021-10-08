@@ -77,15 +77,13 @@ SNO uses for DHCP for now, so in order to ensure the IP address of your instance
 
 After adding the appropriate DNS entires, run the following commands:
 
-`sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm`
-
-`sudo yum update`
-
-`sudo yum install epel-release`
-
-`sudo yum install certbot`
-
-`certbot -d '*.apps.ocp.mydomain.com' --manual --preferred-challenges dns certonly`
+```shell
+sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+sudo yum update
+sudo yum install epel-release
+sudo yum install certbot
+certbot -d '*.apps.ocp.mydomain.com' --manual --preferred-challenges dns certonly
+```
 
 Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in < than 90 days***.
 
