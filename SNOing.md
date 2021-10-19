@@ -17,7 +17,7 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
 5. Fill out your cluster's details. i.e., cluster name, base domain. Check the option for "Install single node OpenShift.", and click the agreement "*I understand, accept, and agree to the limitations associated with using Single Node OpenShift*." Click Next
 
-6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you will need it later in the installation process. Add your ssh public when prompted. e.g., cat \~/.ssh/id\_ed25519.pub | pbcopy
+6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you will need it later in the installation process. Add your ssh public when prompted. e.g., `cat \~/.ssh/id\_ed25519.pub | pbcopy`
 
 7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com][2]. The WebUI will force you to change the hostname to something other than localhost. Select the appropriate network range when prompted by the installer.
 
