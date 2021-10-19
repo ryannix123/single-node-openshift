@@ -5,7 +5,7 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
 **_Minimum requirements: One host is required with at least 8 CPU cores, 32.00 GiB of RAM, and 120 GB of filesystem storage._**
 
-***Additionally, a fixed IP for the system is not available yet through the Assisted Installer, so you'll need to use DHCP, preferably with a DHCP reservation.***\*\*\*
+**_Additionally, a fixed IP for the system is not available yet through the Assisted Installer, so you'll need to use DHCP, preferably with a DHCP reservation._**
 
 1. Log into [cloud.redhat.com][1] with your Red Hat account.
 
