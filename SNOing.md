@@ -3,11 +3,11 @@
 
 Single Node OpenShift is a great way to both try out OpenShift in a lab environment and deploy Kubernetes for edge cases.
 
-******Minimum requirements: One host is required with at least 8 CPU cores, 32.00 GiB of RAM, and 120 GB of filesystem storage.***
+\*\*\*\*\*\*Minimum requirements: One host is required with at least 8 CPU cores, 32.00 GiB of RAM, and 120 GB of filesystem storage.\*\*\*
 
-***Additonally, a fixed IP for the system is not available yet through the Assisted Installer, so you'll need to use DHCP, preferrably with a DHCP reservation.******
+***Additionally, a fixed IP for the system is not available yet through the Assisted Installer, so you'll need to use DHCP, preferably with a DHCP reservation.***\*\*\*
 
-1. Log into [cloud.redhat.com](https://cloud.redhat.com) with your Red Hat account.
+1. Log into [cloud.redhat.com][1] with your Red Hat account. 
 
 2. Click OpenShift from the left-side panel, then click "Create Cluster".
 
@@ -17,15 +17,15 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 
 5. Fill out your cluster's details. i.e., cluster name, base domain. Check the option for "Install single node OpenShift.", and click the agreement "*I understand, accept, and agree to the limitations associated with using Single Node OpenShift*." Click Next
 
-6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you will need it later in the installation process. Add your ssh public when prompted. e.g., cat ~/.ssh/id_ed25519.pub | pbcopy
+6. Click Generate Discovery ISO and download the ISO to your system. Keep this browser window open, as you will need it later in the installation process. Add your ssh public when prompted. e.g., cat \~/.ssh/id\_ed25519.pub | pbcopy
 
-7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com](https://cloud.redhat.com). The WebUI will force you to change the hostname to something other than localhost. Select the appropriate network range when prompted by the installer.
+7. Upload the ISO to your host system of choice that meets the requirements listed above, and follow the installation instructions in the Assisted Installer's WebUI on [cloud.redhat.com][2]. The WebUI will force you to change the hostname to something other than localhost. Select the appropriate network range when prompted by the installer.
 
 8. When the installation is finished, download the Kubeconfig file and make a note of the kubeadmin password listed in the portal.
 
-9. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/) and download the client appropriate for your system. Make sure to download the client version that corresponds to the version of OpenShift that you are running. e.g. If you're using OCP 4.8.9, make sure to download the matching client version.
+9. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][3] and download the client appropriate for your system. Make sure to download the client version that corresponds to the version of OpenShift that you are running. e.g. If you're using OCP 4.8.9, make sure to download the matching client version.
 
-10. After downloading and installing the OpenShift command line tool and Kubeconfig from [cloud.redhat.com](https://cloud.redhat.com), set the KUBECONFIG environment variable to the location of your Kubeconfig, then test the connection:
+10. After downloading and installing the OpenShift command line tool and Kubeconfig from [cloud.redhat.com][4], set the KUBECONFIG environment variable to the location of your Kubeconfig, then test the connection:
 
 `export KUBECONFIG=~/Downloads/kubeconfig`
 
@@ -53,7 +53,7 @@ Patch the registry operator to management state and storage by running the follo
 
 # Add two DNS entries to get started
 
-You'll need add some DNS entries. api.ocp.mydomain.com and *.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate that is based on DNS verification.
+You'll need add some DNS entries. api.ocp.mydomain.com and \*.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate that is based on DNS verification.
 
 # Open ports on your router
 
@@ -61,13 +61,13 @@ Make sure ports 80, 443, 8080, and 6443 are open to your Single Node OpenShift's
 
 # Set a DHCP reservation on your router
 
-SNO uses for DHCP for now, so in order to ensure the IP address of your instance doesn't change, look up the instructions for setting a DHCP reserveration on your router. e.g., I use a [Netgear home router](https://kb.netgear.com/25722/How-do-I-reserve-an-IP-address-on-my-NETGEAR-router).
+SNO uses for DHCP for now, so in order to ensure the IP address of your instance doesn't change, look up the instructions for setting a DHCP reserveration on your router. e.g., I use a [Netgear home router][5].
 
 # Add a Let's Encrypt wildcard certificate for the console and router
 
-**You should run these instructions should run from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.](https://developers.redhat.com/articles/faqs-no-cost-red-hat-enterprise-linux#general)** I run RHEL from a Virtualbox VM.
+**You should run these instructions should run from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.][6]** I run RHEL from a Virtualbox VM.
 
-1. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/) and download the client appropriate for your system.
+1. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][7] and download the client appropriate for your system.
 
 2. Change to the root user, `sudo su`, it's necessary to switch to root because the Let's Encrypt certs are stored in a secure area of your RHEL system.
 
@@ -84,7 +84,7 @@ sudo yum install epel-release certbot
 certbot -d '*.apps.ocp.mydomain.com' --manual --preferred-challenges dns certonly
 ```
 
-Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in < than 90 days***.
+Create the TXT create that Certbot needs to validate domain ownership, then press enter when the records are in place. You should receive a message from Certbot that the certificates were saved to your RHEL system. Note the date of expiration. ***Let's Encrypt certs will need replacing in \< than 90 days***.
 
 ```shell
 Successfully received certificate.
@@ -94,7 +94,7 @@ This certificate expires on 2021-12-06.
 These files will be updated when the certificate renews.
 ```
 
-Now we have the certificates necessary to replace the default certs for OpenShift's [ingress](https://docs.openshift.com/container-platform/4.8/security/certificates/replacing-default-ingress-certificate.html).
+Now we have the certificates necessary to replace the default certs for OpenShift's [ingress][8].
 
 Switch to to the root user and login to the cluster as kubadmin. It's necessary to run these commands as root since the Let's Encrypt certs are in a secure area of your RHEL system. `sudo su` then run the command from earlier to log into OpenShift as the root user. e.g., `oc login --token=sha256~K2aKXufTkVudbcfWIPMlIr5YUMQkpw-MAOG51dGVQw --server=https://api.sno.openshifthelp.com:6443`
 
@@ -120,11 +120,11 @@ oc patch ingresscontroller.operator default \
      -n openshift-ingress-operator
 ```
 
-The instance of Single Node OpenShfit is not set with a Let's Encrypt certificate. Any applications you deploy, preferrably as a non-admin, should use the Let's Encrypt certificate by default.
+The instance of Single Node OpenShift is not set with a Let's Encrypt certificate. Any applications you deploy, preferably as a non-admin, should use the Let's Encrypt certificate by default.
 
-# Shuting down your instance of SNO cleanly
+# Shutting down your instance of SNO cleanly
 
-First, determinte when the cluster certificates expire, and plan to shut it down on or before the expiration date. 
+First, determine when the cluster certificates expire, and plan to shut it down on or before the expiration date. 
 
 From the command line on either your local system or your RHEL system, run the following command as Kubeadmin:
 
@@ -134,7 +134,7 @@ for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug
 
 # Notes
 
-### Shutting down your cluster for a while ###
+### Shutting down your cluster for a while
 If you are shutting the cluster down for an extended period, determine the date on which certificates expire.
 ```shell
 oc -n openshift-kube-apiserver-operator get secret kube-apiserver-to-kubelet-signer -o jsonpath='{.metadata.annotations.auth\.openshift\.io/certificate-not-after}'
@@ -146,8 +146,17 @@ Example result:
 
 The date of expiry is listed at the front, e.g., The certs will expire on 10-18-2022.
 
-### Making it easier to reach your SNO and RHEL instance from your local network ###
+### Making it easier to reach your SNO and RHEL instance from your local network
 
 You may need to modify the `/etc/hosts` file on your system so that your system is aware of the SNO instance. e.g., `192.168.0.19 sno`
 
 After modifying /etc/hosts, you should try ssh'ing into your system. e.g., `ssh coreos@sno`
+
+[1]:	https://cloud.redhat.com
+[2]:	https://cloud.redhat.com
+[3]:	https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/
+[4]:	https://cloud.redhat.com
+[5]:	https://kb.netgear.com/25722/How-do-I-reserve-an-IP-address-on-my-NETGEAR-router
+[6]:	https://developers.redhat.com/articles/faqs-no-cost-red-hat-enterprise-linux#general
+[7]:	https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/
+[8]:	https://docs.openshift.com/container-platform/4.8/security/certificates/replacing-default-ingress-certificate.html
