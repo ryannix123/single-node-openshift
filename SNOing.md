@@ -124,7 +124,7 @@ You should be set to access your instance of Single Node OpenShfit with a Let's 
 
 # Shuting down your instance of SNO cleanly
 
-From the command line on either you local system, run the follow command as Kubeadmin:
+From the command line on either your local system or your RHEL system, run the follow command as Kubeadmin:
 
 ```shell
 for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug node/${node} -- chroot /host shutdown -h 1; done
