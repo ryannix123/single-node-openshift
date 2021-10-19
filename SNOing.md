@@ -80,8 +80,7 @@ After adding the appropriate DNS entires, run the following commands:
 ```shell
 sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
 sudo yum update
-sudo yum install epel-release
-sudo yum install certbot
+sudo yum install epel-release certbot
 certbot -d '*.apps.ocp.mydomain.com' --manual --preferred-challenges dns certonly
 ```
 
