@@ -134,7 +134,7 @@ for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug
 
 # Notes
 
-### Shutting down cluster for a while ###
+### Shutting down your cluster for a while ###
 If you are shutting the cluster down for an extended period, determine the date on which certificates expire.
 ```shell
 oc -n openshift-kube-apiserver-operator get secret kube-apiserver-to-kubelet-signer -o jsonpath='{.metadata.annotations.auth\.openshift\.io/certificate-not-after}'
