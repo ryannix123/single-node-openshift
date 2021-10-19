@@ -35,11 +35,11 @@ Run the following command to confirm you can list cluster resources:
   
 # Add a non-admin account to your OpenShift system
 
-It's best to only use kubeadmin user when you need to elevated privileges for the cluster. e.g., adding an operator. The easiest way to set up a local non-admin user is to use htpasswd. Create the users.htpasswd using the following command for testuser:
+It's best to only use the `kubeadmin` user when you need elevated privileges for the cluster. e.g., adding an operator. The easiest way to set up a local non-admin user is to use htpasswd. Create the users.htpasswd using the following command for a testuser:
 
 `htpasswd -c -B users.htpasswd testuser`
 
-Log into the web console with the kubeadmin account and password, then click the blue warning at the top asking to add an OAuth provider. Use htpassword, and upload your users.htpasswd file. Wait 20 seconds, log out of the OpenShift web console, and you should see htpasswd as an additional authentication provider. Login to make sure the new account works.
+Log into the web console with the kubeadmin account and password, then click the blue warning at the top asking to add an OAuth provider. Use htpassword, and upload your users.htpasswd file. Wait roughly 20 to 60 seconds, log out of the OpenShift web console, and you should see htpasswd as an additional authentication provider. Login to make sure the new account works.
 
 # Add ephemeral storage for the container registry
 
@@ -53,11 +53,11 @@ Patch the registry operator to management state and storage by running the follo
 
 # Add two DNS entries to get started
 
-You'll need add some DNS entries. api.ocp.mydomain.com and *.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate.
+You'll need add some DNS entries. api.ocp.mydomain.com and *.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate that is based on DNS verification.
 
 # Open ports on your router
 
-You'll need to make sure ports 80, 443, 8080, and 6443 are open to your Single Node OpenShift's IP.
+Make sure ports 80, 443, 8080, and 6443 are open to your Single Node OpenShift's IP.
 
 # Set a DHCP reservation on your router
 
@@ -65,7 +65,7 @@ SNO uses for DHCP for now, so in order to ensure the IP address of your instance
 
 # Add a Let's Encrypt wildcard certificate for the console and router
 
-**You should run instructions should run from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.](https://developers.redhat.com/articles/faqs-no-cost-red-hat-enterprise-linux#general)** I run RHEL from a Virtualbox VM.
+**You should run these instructions should run from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.](https://developers.redhat.com/articles/faqs-no-cost-red-hat-enterprise-linux#general)** I run RHEL from a Virtualbox VM.
 
 1. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/](https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable/) and download the client appropriate for your system.
 
@@ -96,7 +96,7 @@ These files will be updated when the certificate renews.
 
 Now we have the certificates necessary to replace the default certs for OpenShift's [ingress](https://docs.openshift.com/container-platform/4.8/security/certificates/replacing-default-ingress-certificate.html).
 
-Switch to to the root user and login to the cluster as kubadmin. It's necessary to run these commands as root since the Let's Encrypt certs are in a secure area of your RHEL system. `sudo su` then run the command from earlier to log into OpenShift as the root user.
+Switch to to the root user and login to the cluster as kubadmin. It's necessary to run these commands as root since the Let's Encrypt certs are in a secure area of your RHEL system. `sudo su` then run the command from earlier to log into OpenShift as the root user. e.g., `oc login --token=sha256~K2aKXufTkVudbcfWIPMlIr5YUMQkpw-MAOG51dGVQw --server=https://api.sno.openshifthelp.com:6443`
 
 Finally, let's run the following commands to upload our certs and properly secure our instance of OpenShift!
 
@@ -120,7 +120,7 @@ oc patch ingresscontroller.operator default \
      -n openshift-ingress-operator
 ```
 
-You should be set to access your instance of Single Node OpenShfit with a Let's Encrypt certificate. You can also deploy an application, perferrably with the non-Kubeadmin user we created, with a certifcate that is secure by default!
+The instance of Single Node OpenShfit is not set with a Let's Encrypt certificate. Any applications you deploy, preferrably as a non-admin, should use the Let's Encrypt certificate by default.
 
 # Shuting down your instance of SNO cleanly
 
