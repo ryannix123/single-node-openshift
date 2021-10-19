@@ -3,11 +3,11 @@
 
 Single Node OpenShift is a great way to both try out OpenShift in a lab environment and deploy Kubernetes for edge cases.
 
-\*\*\*\*\*\*Minimum requirements: One host is required with at least 8 CPU cores, 32.00 GiB of RAM, and 120 GB of filesystem storage.\*\*\*
+**_Minimum requirements: One host is required with at least 8 CPU cores, 32.00 GiB of RAM, and 120 GB of filesystem storage._**
 
 ***Additionally, a fixed IP for the system is not available yet through the Assisted Installer, so you'll need to use DHCP, preferably with a DHCP reservation.***\*\*\*
 
-1. Log into [cloud.redhat.com][1] with your Red Hat account. 
+1. Log into [cloud.redhat.com][1] with your Red Hat account.
 
 2. Click OpenShift from the left-side panel, then click "Create Cluster".
 
@@ -120,7 +120,7 @@ oc patch ingresscontroller.operator default \
      -n openshift-ingress-operator
 ```
 
-The instance of Single Node OpenShift is not set with a Let's Encrypt certificate. Any applications you deploy, preferably as a non-admin, should use the Let's Encrypt certificate by default.
+The instance of Single Node OpenShift is not set with a Let's Encrypt certificate. Any applications you deploy, preferably as a non-admin, should use the Let's Encrypt certificate by default. 
 
 # Shutting down your instance of SNO cleanly
 
