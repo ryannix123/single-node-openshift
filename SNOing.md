@@ -124,11 +124,19 @@ You should be set to access your instance of Single Node OpenShfit with a Let's 
 
 # Shuting down your instance of SNO cleanly
 
+First, determinte when the cluster certificates expire, and plan to shut it down on or before the expiration date. 
+
 From the command line on either your local system or your RHEL system, run the following command as Kubeadmin:
 
 ```shell
 for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug node/${node} -- chroot /host shutdown -h 1; done
 ```
+
+# Notes
+
+If you are shutting the cluster down for an extended period, determine the date on which certificates expire.
+
+`oc -n openshift-kube-apiserver-operator get secret kube-apiserver-to-kubelet-signer -o jsonpath='{.metadata.annotations.auth\.openshift\.io/certificate-not-after}'`
 
 You may need to modify the `/etc/hosts` file on your system so that your system is aware of the SNO instance. e.g., `192.168.0.19 sno`
 
