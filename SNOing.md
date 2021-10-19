@@ -135,8 +135,15 @@ for node in $(oc get nodes -o jsonpath='{.items[*].metadata.name}'); do oc debug
 # Notes
 
 If you are shutting the cluster down for an extended period, determine the date on which certificates expire.
+```shell
+oc -n openshift-kube-apiserver-operator get secret kube-apiserver-to-kubelet-signer -o jsonpath='{.metadata.annotations.auth\.openshift\.io/certificate-not-after}'
+```
 
-`oc -n openshift-kube-apiserver-operator get secret kube-apiserver-to-kubelet-signer -o jsonpath='{.metadata.annotations.auth\.openshift\.io/certificate-not-after}'`
+Example result:
+
+`2022-10-18T20:58:57ZC02F33X2MD6R:single-node-openshift rnix$` 
+
+The date of expiry is listed at the front, e.g., The certs will expire on 10-18-2022.
 
 You may need to modify the `/etc/hosts` file on your system so that your system is aware of the SNO instance. e.g., `192.168.0.19 sno`
 
