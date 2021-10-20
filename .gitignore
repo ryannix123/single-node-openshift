@@ -28,6 +28,7 @@
 
 # OS generated files #
 ######################
+.Ulysses-Settings.plist
 .DS_Store
 .DS_Store?
 ._*
