@@ -51,9 +51,9 @@ Patch the registry operator to management state and storage by running the follo
 
 `oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"storage":{"emptyDir":{}}}}'`
 
-# Add two DNS entries to get started
+# Add three DNS entries to get started
 
-You'll need add some DNS entries. api.ocp.mydomain.com and \*.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate that is based on DNS verification.
+You'll need add some DNS entries. api.ocp.mydomain.com, apit-init.ocp.mydomain.com and \*.apps.ocp.mydomain.com should point to your external IP address. e.g., I use Cloudflare to host my domain's DNS. Keep your domain management tab open as you'll need to add a TXT record later when obtaining a Let's Encrypt certificate that is based on DNS verification.
 
 # Open ports on your router
 
