@@ -61,11 +61,11 @@ Make sure ports 80, 443, 8080, and 6443 are open to your Single Node OpenShift's
 
 # Set a DHCP reservation on your router
 
-SNO uses for DHCP for now, so in order to ensure the IP address of your instance doesn't change, look up the instructions for setting a DHCP reserveration on your router. e.g., I use a [Netgear home router][5].
+SNO uses for DHCP for now, so in order to ensure the IP address of your instance doesn't change, look up the instructions for setting a DHCP reservation on your router. e.g., I use a [Netgear home router][5].
 
 # Add a Let's Encrypt wildcard certificate for the console and router
 
-**You should run these instructions should run from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.][6]** I run RHEL from a Virtualbox VM.
+**You should run these instructions from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.][6]** I run RHEL from a Virtualbox VM.
 
 1. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][7] and download the client appropriate for your system.
 
