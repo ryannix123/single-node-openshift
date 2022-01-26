@@ -24,6 +24,12 @@ Single Node OpenShift is a great way to both try out OpenShift in a lab environm
 8. When the installation is finished, download the Kubeconfig file and make a note of the kubeadmin password listed in the portal.
 
 9. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][3] and download the client appropriate for your system. Make sure to download the client version that corresponds to the version of OpenShift that you are running. e.g. If you're using OCP 4.8.9, make sure to download the matching client version.
+You may also want to run these commands from a macOS or Linux based system:
+```shell
+curl -o oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+sudo tar -C /usr/local/bin -xzvf oc.tar.gz
+sudo install -t /usr/local/bin {kubectl,oc}
+```
 
 10. After downloading and installing the OpenShift command line tool and Kubeconfig from [cloud.redhat.com][4], set the KUBECONFIG environment variable to the location of your Kubeconfig, then test the connection:
 
@@ -46,10 +52,11 @@ Log into the web console with the kubeadmin account and password, then click the
 OpenShift uses CoreOS for the underlying OS. CoreOS is based on RHEL 8, and is an immutable operating system. Since this is a test system, we will set the registry to an empty directory. All images will be lost in the event of a registry pod restart.
 
 Patch the registry operator to management state and storage by running the following commands as Kubeadmin:
+```shell
+oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"managementState":"Managed"}}'
 
-`oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"managementState":"Managed"}}'`
-
-`oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"storage":{"emptyDir":{}}}}'`
+oc patch configs.imageregistry.operator.openshift.io cluster --type merge --patch '{"spec":{"storage":{"emptyDir":{}}}}'
+```
 
 # Add three DNS entries to get started
 
