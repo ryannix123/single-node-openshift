@@ -79,7 +79,13 @@ SNO uses for DHCP for now, so in order to ensure the IP address of your instance
 
 **You should run these instructions from a RHEL based system. [You can use up to 16 free subscriptions of RHEL.][6]** I run RHEL from a Virtualbox VM.
 
-1. Download OpenShift command line client by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][7] and download the client appropriate for your system.
+1. Download the OpenShift command line client to your RHEL system by browsing to [https://mirror.openshift.com/pub/openshift-v4/x86\_64/clients/ocp/stable/][7] and download the client appropriate for your system.
+You may also want to run these commands from your RHEL VM:
+```shell
+curl -o oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+sudo tar -C /usr/local/bin -xzvf oc.tar.gz
+sudo install -t /usr/local/bin {kubectl,oc}
+```
 
 2. Change to the root user, `sudo su`, it's necessary to switch to root because the Let's Encrypt certs are stored in a secure area of your RHEL system.
 
