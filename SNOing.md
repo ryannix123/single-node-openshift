@@ -33,17 +33,22 @@ sudo install -t /usr/local/bin {kubectl,oc}
 
 10. After downloading and installing the OpenShift command line tool and Kubeconfig from [cloud.redhat.com][4], set the KUBECONFIG environment variable to the location of your Kubeconfig, then test the connection:
 
-`export KUBECONFIG=~/Downloads/kubeconfig`
-
+```shell
+export KUBECONFIG=~/Downloads/kubeconfig`
+```
 Run the following command to confirm you can list cluster resources:
 
-`oc get nodes`
+```shell
+oc get nodes
+```
   
 # Add a non-admin account to your OpenShift system
 
 It's best to only use the `kubeadmin` user when you need elevated privileges for the cluster. e.g., adding an operator. The easiest way to set up a local non-admin user is to use htpasswd. Create the users.htpasswd using the following command for a testuser:
 
-`htpasswd -c -B users.htpasswd testuser`
+```shell
+htpasswd -c -B users.htpasswd testuser
+```
 
 Log into the web console with the kubeadmin account and password, then click the blue warning at the top asking to add an OAuth provider. Use htpassword, and upload your users.htpasswd file. Wait roughly 20 to 60 seconds, log out of the OpenShift web console, and you should see htpasswd as an additional authentication provider. Login to make sure the new account works.
 
