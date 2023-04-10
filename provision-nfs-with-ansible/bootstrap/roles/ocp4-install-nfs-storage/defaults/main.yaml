@@ -1,0 +1,5 @@
+ocp4_nfs_namespace: nfs
+nfs_server_ip: 192.168.0.26
+nfs_server_share_path: /home/nfs_shares/ocp
+nfs_storage_class_name: managed-nfs-storage
+nfs_provisioner_name: nfs-storage
