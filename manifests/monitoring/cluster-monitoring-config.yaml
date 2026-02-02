@@ -1,0 +1,22 @@
+# Cluster Monitoring Configuration
+# Enables persistent storage for Prometheus and user workload monitoring
+#
+# Apply with: oc apply -f cluster-monitoring-config.yaml
+# Watch pods restart: oc get pods -n openshift-monitoring -w
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+data:
+  config.yaml: |
+    prometheusK8s: 
+      volumeClaimTemplate:
+        spec:
+          storageClassName: lvms-vg1
+          volumeMode: Filesystem
+          resources:
+            requests:
+              storage: 40Gi
+    enableUserWorkload: true

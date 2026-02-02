@@ -1,0 +1,32 @@
+# LVM Storage Operator Installation
+# Apply with: oc apply -f lvm-operator.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-lvm-storage
+  labels:
+    openshift.io/cluster-monitoring: "true"
+
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-lvm-storage-operatorgroup
+  namespace: openshift-lvm-storage
+spec:
+  targetNamespaces:
+    - openshift-lvm-storage
+
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: lvms-operator
+  namespace: openshift-lvm-storage
+spec:
+  channel: stable-4.20
+  installPlanApproval: Automatic
+  name: lvms-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace

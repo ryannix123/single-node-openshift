@@ -1,8 +1,0 @@
----
-- name: 'Install  NFS Storage'
-  hosts: localhost
-  connection: local
-  tasks:
-  - name: 'Install NFS Storage Support'
-    include_role:
-      name: "ocp4-install-nfs-storage"

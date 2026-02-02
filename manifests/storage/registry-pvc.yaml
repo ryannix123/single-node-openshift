@@ -1,0 +1,19 @@
+# Image Registry Persistent Volume Claim
+# Prerequisites: LVM StorageClass must be available and set as default
+#
+# Apply with: oc apply -f registry-pvc.yaml
+# Then configure the registry:
+#   oc patch configs.imageregistry.operator.openshift.io/cluster --type=merge \
+#     -p '{"spec":{"managementState":"Managed","storage":{"pvc":{"claim":"registry-storage"}},"rolloutStrategy":"Recreate"}}'
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-storage
+  namespace: openshift-image-registry
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
