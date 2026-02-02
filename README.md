@@ -2,6 +2,10 @@
 
 **The complete guide to running OpenShift in your home lab, on a single machine.**
 
+<p align="left">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg" alt="OpenShift Logo" width="400">
+</p>
+
 Many people have used this repo to get OpenShift running on everything from Intel NUCs to enterprise servers. Whether you're learning Kubernetes, building a home lab, or need a portable demo environment, Single Node OpenShift (SNO) is a great way to get started with enterprise grade Kubernetes!
 
 ## Watch the Tutorials
