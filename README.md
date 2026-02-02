@@ -9,7 +9,7 @@ Many people have used this repo to get OpenShift running on everything from Inte
 These step-by-step video guides have helped nearly **15,000 viewers** get their SNO clusters up and running:
 
 - [Single Node OpenShift Installation Walkthrough](https://youtu.be/leJa9HmvdI0) - Complete installation using the Assisted Installer
-- [Configuring Storage, OpenShift Virtualization and Day 2 Operations](https://youtu.be/ZV7KGqcPs7s) - Run containers and virtual machines side-by-side
+- [OpenShift Virtualization - Containers and VMs on the same control plane](https://youtu.be/ZV7KGqcPs7s) - Run containers and virtual machines side-by-side
 
 ## What You Get
 
