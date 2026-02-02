@@ -21,9 +21,9 @@ This repository contains everything you need to go from bare metal to a fully fu
 
 **Installation** - Step-by-step instructions using Red Hat's Assisted Installer, the easiest way to deploy OpenShift on physical or virtual hardware.
 
-**Storage Configuration** - Ready-to-use manifests for the LVM Operator, including the fix for that annoying "drive not recognized" issue that trips up most people.
+**Storage Configuration** - Ready-to-use manifests for the LVM Operator, including the fix for that annoying "drive not recognized" issue that trips up most people. You can use NFS if you need RWX storage.
 
-**Production-Ready TLS** - Replace those self-signed certificates with real Let's Encrypt certs. No more browser warnings.
+**Free TLS certs** - Replace those self-signed certificates with real Let's Encrypt certs. No more browser warnings.
 
 **Operator Deployments** - Pre-configured manifests for Ansible Automation Platform, Advanced Cluster Management, and OpenShift Virtualization. Just `oc apply` and go.
 
@@ -82,7 +82,7 @@ An NVMe drive for your data disk makes a noticeable difference in performance.
 
 **Learning** - Get hands-on experience with the same platform running in production at thousands of enterprises, without needing three machines.
 
-**Development** - Test your applications on real OpenShift before deploying to shared environments. Break things without breaking your team.
+**Development** - Test your applications and new Operators on real OpenShift before deploying to shared environments. Break things without breaking your team.
 
 **Edge & Remote** - SNO is designed for locations where high availability isn't practical but you still need the OpenShift developer experience.
 
@@ -90,7 +90,7 @@ An NVMe drive for your data disk makes a noticeable difference in performance.
 
 ## Tested With
 
-- OpenShift 4.17, 4.18, 4.19, 4.20
+- OpenShift 4.9 - 4.20
 - Ansible Automation Platform 2.5, 2.6
 - Advanced Cluster Management 2.10, 2.11, 2.12
 
