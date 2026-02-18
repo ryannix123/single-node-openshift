@@ -8,16 +8,16 @@
 #   ansible-galaxy collection install kubernetes.core community.general
 #
 # Usage:
-#   ansible-playbook sno-day2.yml
+#   ansible-playbook ansible/sno-day2.yml
 #
 # Overrides (use -e or -e @my-vars.yml):
 #   storage_device   - Block device to wipe          (default: /dev/sdb)
 #   storage_class    - LVM StorageClass name          (default: lvms-vg1)
-#   lvm_channel      - Operator subscription channel  (default: stable-4.21)
+#   lvm_channel      - Operator subscription channel  (default: stable-4.20)
 #   registry_size    - Image registry PVC size        (default: 100Gi)
 #   monitoring_size  - Prometheus PVC size            (default: 40Gi)
 #
-# See vars/defaults.yml for all variables.
+# See ansible/vars/defaults.yml for all variables.
 # =============================================================================
 - name: SNO Day 2 Operations
   hosts: localhost
@@ -25,7 +25,7 @@
   gather_facts: false
 
   vars_files:
-    - "{{ playbook_dir }}/vars/defaults.yml"
+    - vars/defaults.yml
 
   module_defaults:
     group/kubernetes.core.k8s:
