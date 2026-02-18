@@ -1,0 +1,409 @@
+---
+# =============================================================================
+# Single Node OpenShift - Day 2 Operations Playbook
+# Author: Ryan Nix <ryan.nix@gmail.com>
+# Repo:   https://github.com/ryannix123/single-node-openshift
+#
+# Prerequisites:
+#   ansible-galaxy collection install kubernetes.core community.general
+#
+# Usage:
+#   ansible-playbook ansible/sno-day2.yml
+#
+# Overrides (use -e or -e @my-vars.yml):
+#   storage_device   - Block device to wipe          (default: /dev/sdb)
+#   storage_class    - LVM StorageClass name          (default: lvms-vg1)
+#   lvm_channel      - Operator subscription channel  (default: stable-4.20)
+#   registry_size    - Image registry PVC size        (default: 100Gi)
+#   monitoring_size  - Prometheus PVC size            (default: 40Gi)
+#
+# See ansible/vars/defaults.yml for all variables.
+# =============================================================================
+- name: SNO Day 2 Operations
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - vars/defaults.yml
+
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.k8s_json_patch:
+      kubeconfig: "{{ kubeconfig }}"
+
+  tasks:
+
+    # --------------------------------------------------------------------------
+    # 0. Pre-flight checks
+    # --------------------------------------------------------------------------
+    - name: Verify oc / kubectl is available
+      ansible.builtin.command: oc version --client
+      register: oc_version
+      changed_when: false
+      failed_when: oc_version.rc != 0
+
+    - name: Verify cluster is reachable
+      kubernetes.core.k8s_info:
+        kind: Node
+      register: nodes
+      failed_when: nodes.resources | length == 0
+
+    - name: Confirm storage device exists
+      ansible.builtin.stat:
+        path: "{{ storage_device }}"
+      register: dev_stat
+      failed_when: not dev_stat.stat.exists
+
+    # --------------------------------------------------------------------------
+    # 1. Wipe the secondary drive
+    # --------------------------------------------------------------------------
+    - name: "Wipe {{ storage_device }} - destroy partition table"
+      ansible.builtin.command: sgdisk --zap-all "{{ storage_device }}"
+      become: true
+      changed_when: true
+
+    - name: "Wipe {{ storage_device }} - zero first 10 MB"
+      ansible.builtin.command: >
+        dd if=/dev/zero of="{{ storage_device }}"
+        bs=1M count=10 oflag=direct
+      become: true
+      changed_when: true
+
+    - name: "Wipe {{ storage_device }} - remove all signatures"
+      ansible.builtin.command: wipefs -a "{{ storage_device }}"
+      become: true
+      changed_when: true
+
+    - name: Inform kernel of partition table change
+      ansible.builtin.command: partprobe "{{ storage_device }}"
+      become: true
+      changed_when: true
+
+    # --------------------------------------------------------------------------
+    # 2. Install the LVM Storage Operator
+    # --------------------------------------------------------------------------
+    - name: Create openshift-storage namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: openshift-storage
+            labels:
+              openshift.io/cluster-monitoring: "true"
+
+    - name: Create LVM Operator OperatorGroup
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: openshift-storage-operatorgroup
+            namespace: openshift-storage
+          spec:
+            targetNamespaces:
+              - openshift-storage
+
+    - name: Create LVM Operator Subscription
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: lvms-operator
+            namespace: openshift-storage
+          spec:
+            channel: "{{ lvm_channel }}"
+            installPlanApproval: Automatic
+            name: lvms-operator
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+
+    - name: Wait for LVM Operator CSV to succeed
+      kubernetes.core.k8s_info:
+        kind: ClusterServiceVersion
+        namespace: openshift-storage
+        label_selectors:
+          - operators.coreos.com/lvms-operator.openshift-storage
+      register: lvm_csv
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        lvm_csv.resources | length > 0 and
+        (lvm_csv.resources | map(attribute='status.phase') | list | first | default('')) == 'Succeeded'
+
+    # --------------------------------------------------------------------------
+    # 3. Create LVMCluster
+    # --------------------------------------------------------------------------
+    - name: Create LVMCluster
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: lvm.topolvm.io/v1alpha1
+          kind: LVMCluster
+          metadata:
+            name: sno-lvmcluster
+            namespace: openshift-storage
+          spec:
+            storage:
+              deviceClasses:
+                - name: vg1
+                  thinPoolConfig:
+                    name: thin-pool-1
+                    sizePercent: 90
+                    overprovisionRatio: 10
+                  deviceSelector:
+                    paths:
+                      - "{{ storage_device }}"
+                  default: true
+
+    - name: Wait for LVMCluster to become Ready
+      kubernetes.core.k8s_info:
+        kind: LVMCluster
+        name: sno-lvmcluster
+        namespace: openshift-storage
+      register: lvm_cluster
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        lvm_cluster.resources | length > 0 and
+        (lvm_cluster.resources[0].status.state | default('')) == 'Ready'
+
+    # --------------------------------------------------------------------------
+    # 4. Set lvms-vg1 as the default StorageClass
+    # --------------------------------------------------------------------------
+    - name: Gather all existing StorageClasses
+      kubernetes.core.k8s_info:
+        kind: StorageClass
+      register: all_sc
+
+    - name: Remove default annotation from any currently-default StorageClass
+      kubernetes.core.k8s_json_patch:
+        kind: StorageClass
+        name: "{{ item.metadata.name }}"
+        patch:
+          - op: replace
+            path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
+            value: "false"
+      loop: "{{ all_sc.resources }}"
+      when: >
+        item.metadata.annotations is defined and
+        item.metadata.annotations.get('storageclass.kubernetes.io/is-default-class', 'false') == 'true' and
+        item.metadata.name != storage_class
+      ignore_errors: true
+
+    - name: "Annotate {{ storage_class }} as the default StorageClass"
+      kubernetes.core.k8s_json_patch:
+        kind: StorageClass
+        name: "{{ storage_class }}"
+        patch:
+          - op: add
+            path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
+            value: "true"
+
+    # --------------------------------------------------------------------------
+    # 5. Patch the image registry to use persistent storage
+    # --------------------------------------------------------------------------
+    - name: Create PVC for image registry
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: image-registry-storage
+            namespace: openshift-image-registry
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: "{{ registry_size }}"
+            storageClassName: "{{ storage_class }}"
+
+    - name: Patch image registry - enable managed state and PVC storage
+      kubernetes.core.k8s_json_patch:
+        kind: Config
+        api_version: imageregistry.operator.openshift.io/v1
+        name: cluster
+        patch:
+          - op: replace
+            path: /spec/managementState
+            value: Managed
+          - op: replace
+            path: /spec/storage
+            value:
+              pvc:
+                claim: image-registry-storage
+          - op: replace
+            path: /spec/rolloutStrategy
+            value: Recreate
+          - op: replace
+            path: /spec/replicas
+            value: 1
+
+    - name: Wait for image registry to be Available
+      kubernetes.core.k8s_info:
+        kind: Config
+        api_version: imageregistry.operator.openshift.io/v1
+        name: cluster
+      register: registry_status
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        registry_status.resources | length > 0 and
+        (registry_status.resources[0].status.conditions |
+         selectattr('type', 'equalto', 'Available') |
+         map(attribute='status') | list | first | default('False')) == 'True'
+
+    # --------------------------------------------------------------------------
+    # 6. Patch cluster monitoring to use persistent storage
+    # --------------------------------------------------------------------------
+    - name: Create or update cluster-monitoring-config ConfigMap
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: cluster-monitoring-config
+            namespace: openshift-monitoring
+          data:
+            config.yaml: |
+              prometheusK8s:
+                retention: {{ monitoring_retention }}
+                volumeClaimTemplate:
+                  metadata:
+                    name: prometheus-k8s-data
+                  spec:
+                    storageClassName: {{ storage_class }}
+                    resources:
+                      requests:
+                        storage: {{ monitoring_size }}
+              alertmanagerMain:
+                volumeClaimTemplate:
+                  metadata:
+                    name: alertmanager-data
+                  spec:
+                    storageClassName: {{ storage_class }}
+                    resources:
+                      requests:
+                        storage: {{ alertmanager_size }}
+
+    - name: Wait for Prometheus pods to be Running
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: openshift-monitoring
+        label_selectors:
+          - app.kubernetes.io/name=prometheus
+      register: prom_pods
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        prom_pods.resources | length > 0 and
+        (prom_pods.resources |
+         selectattr('status.phase', 'equalto', 'Running') | list | length) == prom_pods.resources | length
+
+    # --------------------------------------------------------------------------
+    # 7. Install OpenShift Virtualization
+    # --------------------------------------------------------------------------
+    - name: Create openshift-cnv namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: openshift-cnv
+            labels:
+              openshift.io/cluster-monitoring: "true"
+
+    - name: Create CNV OperatorGroup
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1
+          kind: OperatorGroup
+          metadata:
+            name: kubevirt-hyperconverged-group
+            namespace: openshift-cnv
+          spec:
+            targetNamespaces:
+              - openshift-cnv
+
+    - name: Create CNV Subscription
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: hco-operatorhub
+            namespace: openshift-cnv
+          spec:
+            channel: stable
+            installPlanApproval: Automatic
+            name: kubevirt-hyperconverged
+            source: redhat-operators
+            sourceNamespace: openshift-marketplace
+
+    - name: Wait for CNV CSV to succeed
+      kubernetes.core.k8s_info:
+        kind: ClusterServiceVersion
+        namespace: openshift-cnv
+        label_selectors:
+          - operators.coreos.com/kubevirt-hyperconverged.openshift-cnv
+      register: cnv_csv
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        cnv_csv.resources | length > 0 and
+        (cnv_csv.resources | map(attribute='status.phase') | list | first | default('')) == 'Succeeded'
+
+    - name: Create HyperConverged instance
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: hco.kubevirt.io/v1beta1
+          kind: HyperConverged
+          metadata:
+            name: kubevirt-hyperconverged
+            namespace: openshift-cnv
+          spec:
+            featureGates:
+              enableCommonBootImageImport: true
+
+    - name: Wait for HyperConverged to be Available
+      kubernetes.core.k8s_info:
+        kind: HyperConverged
+        name: kubevirt-hyperconverged
+        namespace: openshift-cnv
+      register: hco_status
+      retries: "{{ operator_retries }}"
+      delay: "{{ operator_delay }}"
+      until: >
+        hco_status.resources | length > 0 and
+        (hco_status.resources[0].status.conditions |
+         selectattr('type', 'equalto', 'Available') |
+         map(attribute='status') | list | first | default('False')) == 'True'
+
+    # --------------------------------------------------------------------------
+    # Summary
+    # --------------------------------------------------------------------------
+    - name: Print completion summary
+      ansible.builtin.debug:
+        msg:
+          - "✅  Drive {{ storage_device }} wiped"
+          - "✅  LVM Storage Operator installed ({{ lvm_channel }})"
+          - "✅  LVMCluster created and Ready"
+          - "✅  StorageClass {{ storage_class }} set as cluster default"
+          - "✅  Image registry patched → {{ registry_size }} PVC"
+          - "✅  Cluster monitoring patched → {{ monitoring_size }} PVC ({{ monitoring_retention }} retention)"
+          - "✅  OpenShift Virtualization installed and HyperConverged is Available"

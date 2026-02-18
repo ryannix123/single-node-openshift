@@ -2,104 +2,149 @@
 
 **The complete guide to running OpenShift in your home lab, on a single machine.**
 
-<p align="left">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg" alt="OpenShift Logo" width="400">
-</p>
+![OpenShift Logo](https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg)
 
-Many people have used this repo to get OpenShift running on everything from Intel NUCs to enterprise servers. Whether you're learning Kubernetes, building a home lab, or need a portable demo environment, Single Node OpenShift (SNO) is a great way to get started with enterprise grade Kubernetes!
+Many people have used this repo to get OpenShift running on everything from Intel NUCs to enterprise servers. Whether you're learning Kubernetes, building a home lab, or need a portable demo environment, Single Node OpenShift (SNO) is a great way to get started with enterprise-grade Kubernetes!
 
 ## Watch the Tutorials
 
 These step-by-step video guides have helped nearly **15,000 viewers** get their SNO clusters up and running:
 
-- [Single Node OpenShift Installation Walkthrough](https://youtu.be/leJa9HmvdI0) - Complete installation using the Assisted Installer
-- [OpenShift Virtualization - Containers and VMs on the same control plane](https://youtu.be/ZV7KGqcPs7s) - Run containers and virtual machines side-by-side
+- [Single Node OpenShift Installation Walkthrough](https://youtu.be/leJa9HmvdI0) — Complete installation using the Assisted Installer
+- [OpenShift Virtualization — Containers and VMs on the same control plane](https://youtu.be/ZV7KGqcPs7s) — Run containers and virtual machines side-by-side
 
-## What You Get
+---
 
-This repository contains everything you need to go from bare metal to a fully functional OpenShift cluster:
+## Two Steps to a Full SNO Cluster
 
-**Installation** - Step-by-step instructions using Red Hat's Assisted Installer, the easiest way to deploy OpenShift on physical or virtual hardware.
+### Step 1 — Install OpenShift
 
-**Storage Configuration** - Ready-to-use manifests for the LVM Operator, including the fix for that annoying "drive not recognized" issue that trips up most people. You can use NFS if you need RWX storage.
+Follow the [Installation Guide](docs/01-installation.md) to deploy SNO using Red Hat's Assisted Installer. The process takes about 45 minutes and produces a fully functional cluster.
 
-**Free TLS certs** - Replace those self-signed certificates with real Let's Encrypt certs. No more browser warnings.
+### Step 2 — Run the Day 2 Playbook
 
-**Operator Deployments** - Pre-configured manifests for Ansible Automation Platform, Advanced Cluster Management, and OpenShift Virtualization. Just `oc apply` and go.
-
-**Safe Shutdown Scripts** - SNO clusters that sit idle can develop certificate problems. The included shutdown script handles certificate rotation automatically before powering down.
-
-## Quick Start
+Everything after installation is automated by a single Ansible playbook:
 
 ```bash
+# Install the required Ansible collections
+ansible-galaxy collection install kubernetes.core community.general
+
 # Clone the repo
 git clone https://github.com/ryannix123/single-node-openshift.git
 cd single-node-openshift
 
-# Follow the installation guide
-# Then apply storage configuration
-oc apply -f manifests/storage/lvm-operator.yaml
-oc apply -f manifests/storage/lvmcluster.yaml
-oc apply -f manifests/storage/registry-pvc.yaml
+# Run the day 2 playbook
+ansible-playbook ansible/sno-day2.yml
 ```
+
+The playbook will:
+
+- Wipe and prepare your secondary drive for LVM storage
+- Install the LVM Storage Operator and create an LVMCluster
+- Set `lvms-vg1` as the default StorageClass
+- Patch the image registry to use persistent storage
+- Patch cluster monitoring (Prometheus) to use persistent storage
+- Install OpenShift Virtualization and activate the HyperConverged instance
+
+Each step has readiness gates — it won't proceed until the previous phase is healthy.
+
+#### Customizing the playbook
+
+Override any variable on the command line or create a vars file:
+
+```bash
+# Common overrides
+ansible-playbook ansible/sno-day2.yml \
+  -e kubeconfig=/path/to/kubeconfig \
+  -e storage_device=/dev/nvme1n1 \
+  -e registry_size=200Gi \
+  -e monitoring_size=80Gi
+```
+
+See [`ansible/vars/defaults.yml`](ansible/vars/defaults.yml) for all available variables and their defaults.
+
+---
+
+## Optional Add-ons
+
+After the day 2 playbook completes, you can layer in additional capabilities using the pre-built manifests:
+
+| Add-on | Manifests | Notes |
+|--------|-----------|-------|
+| Ansible Automation Platform | `manifests/operators/aap/` | Requires 12+ cores, 48GB RAM |
+| Advanced Cluster Management | `manifests/operators/acm/` | Requires 16+ cores, 64GB RAM |
+| Let's Encrypt TLS certs | `manifests/tls/` | See [TLS Guide](docs/02-tls.md) |
+
+---
+
+## Hardware Requirements
+
+| Setup | CPU | RAM | Storage |
+|-------|-----|-----|---------|
+| Base cluster | 8 cores | 32 GB | 120 GB boot + data disk |
+| With Virtualization | 8 cores | 32 GB | 120 GB + 100 GB |
+| With AAP | 12 cores | 48 GB | 120 GB + 100 GB |
+| With ACM | 16 cores | 64 GB | 120 GB + 200 GB |
+| Full stack | 16+ cores | 64 GB+ | 120 GB + 500 GB |
+
+An NVMe drive for your data disk makes a noticeable difference in performance.
+
+---
 
 ## Repository Layout
 
 ```
+ansible/
+  sno-day2.yml          # Day 2 operations playbook — start here
+  vars/
+    defaults.yml        # All tunable variables with documentation
+
 docs/
-  installation.md        # Getting SNO installed
-  day2-operations.md     # Everything after installation
+  01-installation.md    # Getting SNO installed via Assisted Installer
+  02-tls.md             # Free Let's Encrypt certificates
+  03-optional-operators.md  # AAP, ACM, and other add-ons
 
 manifests/
-  storage/               # LVM operator, registry PVC
-  monitoring/            # Prometheus persistence
   operators/
-    aap/                 # Ansible Automation Platform 2.6
-    acm/                 # Advanced Cluster Management
-    cnv/                 # OpenShift Virtualization
-  tls/                   # Let's Encrypt configuration
+    aap/                # Ansible Automation Platform 2.6
+    acm/                # Advanced Cluster Management
+  tls/                  # Let's Encrypt configuration
 
 scripts/
-  sno-shutdown.sh        # Safe shutdown with cert rotation
-  wipe-storage-drive.sh  # Prepare drives for LVM
-  renew-letsencrypt.sh   # Certificate renewal
+  sno-shutdown.sh       # Safe shutdown with certificate rotation
+  renew-letsencrypt.sh  # Certificate renewal
 ```
 
-## Hardware Requirements
+---
 
-SNO is surprisingly resource-efficient. Here's what you need:
+## Safe Shutdown
 
-| Setup | CPU | RAM | Storage |
-|-------|-----|-----|---------|
-| Base cluster | 8 cores | 32GB | 120GB + data disk |
-| With AAP | 12 cores | 48GB | 120GB + 100GB |
-| With ACM | 16 cores | 64GB | 120GB + 200GB |
-| Full stack | 16+ cores | 64GB+ | 120GB + 500GB |
+SNO clusters that sit idle can develop certificate problems. Always shut down using the included script:
 
-An NVMe drive for your data disk makes a noticeable difference in performance.
+```bash
+./scripts/sno-shutdown.sh
+```
 
-## Why Single Node OpenShift?
+It handles certificate rotation automatically before the node powers off.
 
-**Learning** - Get hands-on experience with the same platform running in production at thousands of enterprises, without needing three machines.
-
-**Development** - Test your applications and new Operators on real OpenShift before deploying to shared environments. Break things without breaking your team.
-
-**Edge & Remote** - SNO is designed for locations where high availability isn't practical but you still need the OpenShift developer experience.
-
-**Demos** - Show customers or stakeholders real OpenShift capabilities on hardware you control.
+---
 
 ## Tested With
 
-- OpenShift 4.9 - 4.20
+- OpenShift 4.15 – 4.20
 - Ansible Automation Platform 2.5, 2.6
 - Advanced Cluster Management 2.10, 2.11, 2.12
+
+---
 
 ## Contributing
 
 Found a bug? Have a better way to do something? PRs and issues are welcome.
 
+---
+
 ## About
 
-Created by Ryan Nix. This is a personal project to help the OpenShift community—not an official Red Hat resource.
+Created by Ryan Nix. This is a personal project to help the OpenShift community — not an official Red Hat resource.
 
-If this repo helped you, consider giving it a star. It helps others find it too.
+If this repo helped you, consider giving it a ⭐. It helps others find it too.

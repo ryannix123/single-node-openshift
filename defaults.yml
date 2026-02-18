@@ -1,0 +1,58 @@
+---
+# =============================================================================
+# Single Node OpenShift - Day 2 Operations: Default Variables
+# Override any of these on the command line with -e key=value
+# or create a custom vars file and pass it with -e @my-vars.yml
+# =============================================================================
+
+# Path to your kubeconfig file.
+# Defaults to KUBECONFIG env var, then ~/.kube/config.
+kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(ansible_env.HOME + '/.kube/config', true) }}"
+
+# ------------------------------------------------------------------
+# Storage
+# ------------------------------------------------------------------
+
+# Block device to wipe and hand to LVM.
+# Use `lsblk` on your SNO node to confirm the correct device name.
+# Common values: /dev/sdb, /dev/nvme1n1, /dev/vdb
+storage_device: /dev/sdb
+
+# Name of the LVM StorageClass created by the operator.
+# This matches the deviceClass name in the LVMCluster spec (vg1 → lvms-vg1).
+storage_class: lvms-vg1
+
+# LVM Operator subscription channel.
+# Should match your OCP version: stable-4.18, stable-4.19, stable-4.20, etc.
+lvm_channel: stable-4.20
+
+# ------------------------------------------------------------------
+# Image Registry
+# ------------------------------------------------------------------
+
+# PVC size for the internal image registry.
+# 100Gi is comfortable for a home lab; increase if you push many images.
+registry_size: 100Gi
+
+# ------------------------------------------------------------------
+# Cluster Monitoring (Prometheus)
+# ------------------------------------------------------------------
+
+# PVC size for each Prometheus replica.
+monitoring_size: 40Gi
+
+# Prometheus data retention period.
+monitoring_retention: 7d
+
+# PVC size for Alertmanager.
+alertmanager_size: 2Gi
+
+# ------------------------------------------------------------------
+# Timeouts
+# ------------------------------------------------------------------
+
+# How many retries when waiting for operators to become ready.
+# Each retry waits `operator_delay` seconds.
+# Total wait = operator_retries × operator_delay
+operator_retries: 40
+operator_delay: 20
