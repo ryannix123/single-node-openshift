@@ -2,7 +2,7 @@
 
 **The complete guide to running OpenShift in your home lab, on a single machine.**
 
-![OpenShift Logo](https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg)
+<img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/OpenShift-LogoType.svg" alt="OpenShift Logo" width="200">
 
 Many people have used this repo to get OpenShift running on everything from Intel NUCs to enterprise servers. Whether you're learning Kubernetes, building a home lab, or need a portable demo environment, Single Node OpenShift (SNO) is a great way to get started with enterprise-grade Kubernetes!
 
@@ -34,7 +34,7 @@ git clone https://github.com/ryannix123/single-node-openshift.git
 cd single-node-openshift
 
 # Run the day 2 playbook
-ansible-playbook ansible/sno-day2.yml
+ansible-playbook sno-day2.yml
 ```
 
 The playbook will:
@@ -54,14 +54,14 @@ Override any variable on the command line or create a vars file:
 
 ```bash
 # Common overrides
-ansible-playbook ansible/sno-day2.yml \
+ansible-playbook sno-day2.yml \
   -e kubeconfig=/path/to/kubeconfig \
   -e storage_device=/dev/nvme1n1 \
   -e registry_size=200Gi \
   -e monitoring_size=80Gi
 ```
 
-See [`ansible/vars/defaults.yml`](ansible/vars/defaults.yml) for all available variables and their defaults.
+See [`vars/defaults.yml`](vars/defaults.yml) for all available variables and their defaults.
 
 ---
 
@@ -94,25 +94,24 @@ An NVMe drive for your data disk makes a noticeable difference in performance.
 ## Repository Layout
 
 ```
-ansible/
-  sno-day2.yml          # Day 2 operations playbook — start here
-  vars/
-    defaults.yml        # All tunable variables with documentation
+sno-day2.yml              # Day 2 operations playbook — start here
+vars/
+  defaults.yml            # All tunable variables with documentation
 
 docs/
-  01-installation.md    # Getting SNO installed via Assisted Installer
-  02-tls.md             # Free Let's Encrypt certificates
+  01-installation.md      # Getting SNO installed via Assisted Installer
+  02-tls.md               # Free Let's Encrypt certificates
   03-optional-operators.md  # AAP, ACM, and other add-ons
 
 manifests/
   operators/
-    aap/                # Ansible Automation Platform 2.6
-    acm/                # Advanced Cluster Management
-  tls/                  # Let's Encrypt configuration
+    aap/                  # Ansible Automation Platform 2.6
+    acm/                  # Advanced Cluster Management
+  tls/                    # Let's Encrypt configuration
 
 scripts/
-  sno-shutdown.sh       # Safe shutdown with certificate rotation
-  renew-letsencrypt.sh  # Certificate renewal
+  sno-shutdown.sh         # Safe shutdown with certificate rotation
+  renew-letsencrypt.sh    # Certificate renewal
 ```
 
 ---
@@ -131,7 +130,7 @@ It handles certificate rotation automatically before the node powers off.
 
 ## Tested With
 
-- OpenShift 4.15 – 4.20
+- OpenShift 4.15 – 4.21
 - Ansible Automation Platform 2.5, 2.6
 - Advanced Cluster Management 2.10, 2.11, 2.12
 

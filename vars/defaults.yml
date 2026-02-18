@@ -23,8 +23,8 @@ storage_device: /dev/sdb
 storage_class: lvms-vg1
 
 # LVM Operator subscription channel.
-# Should match your OCP version: stable-4.18, stable-4.19, stable-4.20, etc.
-lvm_channel: stable-4.20
+# Should match your OCP version: stable-4.19, stable-4.20, stable-4.21, etc.
+lvm_channel: stable-4.21
 
 # ------------------------------------------------------------------
 # Image Registry
