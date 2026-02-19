@@ -7,7 +7,11 @@
 
 # Path to your kubeconfig file.
 # Defaults to KUBECONFIG env var, then ~/.kube/config.
-kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(ansible_env.HOME + '/.kube/config', true) }}"
+kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') + '/.kube/config', true) }}"
+
+# SSH private key used to connect to the SNO node as the 'core' user.
+# This is the key you provided during Assisted Installer image creation.
+ssh_key_path: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa"
 
 # ------------------------------------------------------------------
 # Storage
@@ -16,15 +20,15 @@ kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(ansible_env.HOME + '/.kube
 # Block device to wipe and hand to LVM.
 # Use `lsblk` on your SNO node to confirm the correct device name.
 # Common values: /dev/sdb, /dev/nvme1n1, /dev/vdb
-storage_device: /dev/sdb
+storage_device: /dev/nvme1n1
 
 # Name of the LVM StorageClass created by the operator.
 # This matches the deviceClass name in the LVMCluster spec (vg1 → lvms-vg1).
 storage_class: lvms-vg1
 
 # LVM Operator subscription channel.
-# Should match your OCP version: stable-4.18, stable-4.19, stable-4.20, etc.
-lvm_channel: stable-4.20
+# Should match your OCP version: stable-4.19, stable-4.20, stable-4.21, etc.
+lvm_channel: stable-4.21
 
 # ------------------------------------------------------------------
 # Image Registry
