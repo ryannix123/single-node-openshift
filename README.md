@@ -15,6 +15,36 @@ These step-by-step video guides have helped nearly **15,000 viewers** get their 
 
 ---
 
+## Prerequisites
+
+Before running the day 2 playbook you'll need the following on your workstation:
+
+- **Ansible** 2.14+: `pip install ansible`
+- **Ansible collections**: `ansible-galaxy collection install kubernetes.core community.general`
+- **`oc` CLI**: Download from [console.redhat.com](https://console.redhat.com/openshift/downloads) and add to your `$PATH`
+- **kubeconfig**: Export your cluster's kubeconfig — `export KUBECONFIG=~/path/to/kubeconfig`
+- **SSH key**: The private key you registered during Assisted Installer image creation. Defaults to `~/.ssh/id_rsa` — override with `-e ssh_key_path=~/.ssh/your_key` if different.
+
+> **Identify your storage device first.** SSH into the SNO node and run `lsblk` to confirm which device is your secondary data disk. It is commonly `/dev/nvme1n1` or `/dev/sdb` but varies by hardware. Set `storage_device` in `vars/defaults.yml` accordingly before running the playbook.
+
+---
+
+## Known Issues
+
+**Assisted Installer does not wipe secondary disks.** If you reinstall SNO on a machine that previously ran LVMS, the secondary disk will still have stale LVM partition table entries and device mapper state from the previous cluster. The day 2 playbook handles this automatically — it runs `dmsetup remove_all`, `partx -d`, and `sgdisk --zap-all` via SSH before creating the LVMCluster. If LVMS still reports `has children block devices and could not be considered` after a fresh install, SSH into the node and run:
+
+```bash
+sudo dmsetup remove_all -f
+sudo partx -d /dev/nvme1n1   # use your data disk device
+sudo sgdisk --zap-all /dev/nvme1n1
+```
+
+Then re-run the playbook. The playbook's wipe tasks are skipped if LVM children are already detected (idempotent on re-runs), so this is a safe operation.
+
+**`oc debug` cannot wipe disks reliably.** The playbook uses SSH directly to the node for all disk operations. `oc debug` sessions hit kernel ioctl limitations (`BLKRRPART: Device or resource busy`) that make partition table reloads unreliable. SSH as the `core` user avoids this entirely.
+
+---
+
 ## Two Steps to a Full SNO Cluster
 
 ### Step 1 — Install OpenShift
