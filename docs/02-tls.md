@@ -7,7 +7,13 @@ Replace OpenShift's self-signed certificates with real Let's Encrypt wildcard ce
 ## Prerequisites
 
 - Your domain's DNS is managed by Cloudflare
-- `certbot` installed: `pip install certbot certbot-dns-cloudflare`
+- `certbot` and the Cloudflare plugin installed via pipx:
+  ```bash
+  brew install pipx
+  pipx ensurepath
+  pipx install certbot
+  pipx inject certbot certbot-dns-cloudflare
+  ```
 - A Cloudflare API token with **Zone:DNS:Edit** permission (see below)
 - `oc` CLI configured and pointing at your SNO cluster
 

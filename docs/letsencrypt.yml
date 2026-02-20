@@ -56,7 +56,8 @@
     # Create one at https://dash.cloudflare.com/profile/api-tokens
     # Override with: -e cloudflare_api_token=your_token
     # Or set env var: export CLOUDFLARE_API_TOKEN=your_token
-    cloudflare_api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+    # If neither is set, the playbook will prompt interactively.
+    cloudflare_api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') | default('', true) }}"
 
     # Path for the Cloudflare credentials file certbot uses
     cloudflare_credentials: "{{ cert_dir }}/cloudflare.ini"
@@ -78,25 +79,45 @@
       changed_when: false
       failed_when: certbot_check.rc != 0
 
-    - name: Verify certbot-dns-cloudflare plugin is installed
-      ansible.builtin.command: pip show certbot-dns-cloudflare
+    - name: Check if certbot-dns-cloudflare plugin is installed
+      ansible.builtin.command: certbot plugins --text
       register: cf_plugin_check
       changed_when: false
-      failed_when: cf_plugin_check.rc != 0
+      failed_when: false
+
+    - name: Install certbot and certbot-dns-cloudflare via pipx if missing
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - pipx install certbot
+        - pipx inject certbot certbot-dns-cloudflare
+      when: "'dns-cloudflare' not in cf_plugin_check.stdout"
+      changed_when: true
       ignore_errors: true
 
-    - name: Install certbot-dns-cloudflare if missing
-      ansible.builtin.command: pip install certbot-dns-cloudflare
-      when: cf_plugin_check.rc != 0
-      changed_when: true
+    - name: Verify certbot-dns-cloudflare is available after install
+      ansible.builtin.command: certbot plugins --text
+      register: cf_plugin_verify
+      changed_when: false
+      failed_when: "'dns-cloudflare' not in cf_plugin_verify.stdout"
 
-    - name: Verify Cloudflare API token is set
+    - name: Prompt for Cloudflare API token if not set
+      ansible.builtin.pause:
+        prompt: |
+          Cloudflare API token is not set.
+          Create one at https://dash.cloudflare.com/profile/api-tokens
+          with Zone:DNS:Edit permissions, then paste it here
+        echo: false
+      register: token_prompt
+      when: cloudflare_api_token | length == 0
+
+    - name: Set token from prompt
+      ansible.builtin.set_fact:
+        cloudflare_api_token: "{{ token_prompt.user_input }}"
+      when: cloudflare_api_token | length == 0
+
+    - name: Verify Cloudflare API token is now set
       ansible.builtin.fail:
-        msg: >
-          Cloudflare API token is not set. Either export CLOUDFLARE_API_TOKEN
-          or pass -e cloudflare_api_token=your_token on the command line.
-          Create a token at https://dash.cloudflare.com/profile/api-tokens
-          with Zone:DNS:Edit permissions.
+        msg: "Cloudflare API token is still empty — cannot continue."
       when: cloudflare_api_token | length == 0
 
     - name: Verify oc is available
