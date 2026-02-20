@@ -1,0 +1,251 @@
+---
+# =============================================================================
+# Single Node OpenShift - Let's Encrypt TLS Playbook
+# Author: Ryan Nix <ryan.nix@gmail.com>
+# Repo:   https://github.com/ryannix123/single-node-openshift
+#
+# Obtains a wildcard Let's Encrypt certificate for your SNO ingress domain
+# and applies it to the OpenShift ingress controller.
+#
+# Prerequisites:
+#   pip install certbot
+#   ansible-galaxy collection install kubernetes.core
+#
+# Usage:
+#   ansible-playbook letsencrypt.yml
+#
+# Overrides:
+#   ansible-playbook letsencrypt.yml \
+#     -e ingress_domain=apps.sno.example.com \
+#     -e certbot_email=you@example.com \
+#     -e cert_dir=~/certs
+#
+# NOTE: Uses the Cloudflare DNS plugin for fully automated DNS-01 challenge.
+#       Requires a Cloudflare API token with Zone:DNS:Edit permissions.
+#       Set via: export CLOUDFLARE_API_TOKEN=your_token
+#       Or pass:  -e cloudflare_api_token=your_token
+# =============================================================================
+- name: Let's Encrypt TLS for SNO Ingress
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Domain for the wildcard cert — must match your cluster's ingress domain
+    ingress_domain: "apps.sno.openshifthelp.com"
+
+    # Email for Let's Encrypt expiry notifications
+    certbot_email: "ryan.nix@gmail.com"
+
+    # Where certbot stores certificates on your workstation
+    cert_dir: "{{ lookup('env', 'HOME') }}/letsencrypt-sno"
+
+    # Derived paths — no need to change these
+    cert_live_dir: "{{ cert_dir }}/live/{{ ingress_domain }}"
+    fullchain: "{{ cert_live_dir }}/fullchain.pem"
+    privkey: "{{ cert_live_dir }}/privkey.pem"
+
+    # Resource names include month/year so renewals don't collide with existing secrets
+    cert_suffix: "{{ lookup('pipe', 'date +%m%Y') }}"
+    configmap_name: "letsencrypt-ca-{{ cert_suffix }}"
+    secret_name: "letsencrypt-cert-{{ cert_suffix }}"
+
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') + '/.kube/config', true) }}"
+
+    # Cloudflare API token with Zone:DNS:Edit permission
+    # Create one at https://dash.cloudflare.com/profile/api-tokens
+    # Override with: -e cloudflare_api_token=your_token
+    # Or set env var: export CLOUDFLARE_API_TOKEN=your_token
+    cloudflare_api_token: "{{ lookup('env', 'CLOUDFLARE_API_TOKEN') }}"
+
+    # Path for the Cloudflare credentials file certbot uses
+    cloudflare_credentials: "{{ cert_dir }}/cloudflare.ini"
+
+  module_defaults:
+    group/kubernetes.core.k8s:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ kubeconfig }}"
+
+  tasks:
+
+    # --------------------------------------------------------------------------
+    # 1. Verify prerequisites
+    # --------------------------------------------------------------------------
+    - name: Verify certbot is installed
+      ansible.builtin.command: certbot --version
+      register: certbot_check
+      changed_when: false
+      failed_when: certbot_check.rc != 0
+
+    - name: Verify certbot-dns-cloudflare plugin is installed
+      ansible.builtin.command: pip show certbot-dns-cloudflare
+      register: cf_plugin_check
+      changed_when: false
+      failed_when: cf_plugin_check.rc != 0
+      ignore_errors: true
+
+    - name: Install certbot-dns-cloudflare if missing
+      ansible.builtin.command: pip install certbot-dns-cloudflare
+      when: cf_plugin_check.rc != 0
+      changed_when: true
+
+    - name: Verify Cloudflare API token is set
+      ansible.builtin.fail:
+        msg: >
+          Cloudflare API token is not set. Either export CLOUDFLARE_API_TOKEN
+          or pass -e cloudflare_api_token=your_token on the command line.
+          Create a token at https://dash.cloudflare.com/profile/api-tokens
+          with Zone:DNS:Edit permissions.
+      when: cloudflare_api_token | length == 0
+
+    - name: Verify oc is available
+      ansible.builtin.command: oc version --client
+      changed_when: false
+
+    - name: Verify cluster is reachable
+      kubernetes.core.k8s_info:
+        kind: Node
+      register: nodes
+      failed_when: nodes.resources | length == 0
+
+    - name: Create cert directory
+      ansible.builtin.file:
+        path: "{{ cert_dir }}"
+        state: directory
+        mode: '0700'
+
+    # --------------------------------------------------------------------------
+    # 2. Obtain certificate (manual DNS-01 challenge)
+    # --------------------------------------------------------------------------
+    - name: Check if cert already exists and is valid
+      ansible.builtin.command: >
+        openssl x509 -checkend 2592000 -noout -in {{ fullchain }}
+      register: cert_valid
+      changed_when: false
+      failed_when: false
+
+    - name: Show cert status
+      ansible.builtin.debug:
+        msg: >-
+          {% if cert_valid.rc == 0 %}
+          Certificate exists and is valid for >30 days — skipping certbot.
+          {% else %}
+          No valid certificate found — running certbot now.
+          {% endif %}
+
+    - name: Write Cloudflare credentials file
+      ansible.builtin.copy:
+        dest: "{{ cloudflare_credentials }}"
+        mode: '0600'
+        content: |
+          dns_cloudflare_api_token = {{ cloudflare_api_token }}
+      when: cert_valid.rc != 0
+
+    - name: Run certbot with Cloudflare DNS plugin (fully automated)
+      ansible.builtin.command: >
+        certbot certonly
+        --dns-cloudflare
+        --dns-cloudflare-credentials {{ cloudflare_credentials }}
+        --dns-cloudflare-propagation-seconds 30
+        --agree-tos
+        --non-interactive
+        --email {{ certbot_email }}
+        -d *.{{ ingress_domain }}
+        --config-dir {{ cert_dir }}
+        --work-dir {{ cert_dir }}
+        --logs-dir {{ cert_dir }}
+      when: cert_valid.rc != 0
+      register: certbot_result
+      changed_when: certbot_result.rc == 0
+
+    - name: Verify certificate was obtained
+      ansible.builtin.stat:
+        path: "{{ fullchain }}"
+      register: cert_file
+      failed_when: not cert_file.stat.exists
+
+    # --------------------------------------------------------------------------
+    # 3. Apply certificate to OpenShift
+    # --------------------------------------------------------------------------
+    - name: Create CA bundle ConfigMap in openshift-config
+      ansible.builtin.command: >
+        oc create configmap {{ configmap_name }}
+        --from-file=ca-bundle.crt={{ fullchain }}
+        -n openshift-config
+        --dry-run=client -o yaml
+      register: configmap_yaml
+      changed_when: false
+
+    - name: Apply CA bundle ConfigMap
+      ansible.builtin.command: >
+        oc apply -f -
+      args:
+        stdin: "{{ configmap_yaml.stdout }}"
+      changed_when: true
+
+    - name: Patch cluster proxy to trust Let's Encrypt CA
+      ansible.builtin.command: >
+        oc patch proxy/cluster
+        --type=merge
+        -p '{"spec":{"trustedCA":{"name":"{{ configmap_name }}"}}}'
+      changed_when: true
+
+    - name: Create TLS secret in openshift-ingress
+      ansible.builtin.command: >
+        oc create secret tls {{ secret_name }}
+        --cert={{ fullchain }}
+        --key={{ privkey }}
+        -n openshift-ingress
+        --dry-run=client -o yaml
+      register: secret_yaml
+      changed_when: false
+
+    - name: Apply TLS secret
+      ansible.builtin.command: >
+        oc apply -f -
+      args:
+        stdin: "{{ secret_yaml.stdout }}"
+      changed_when: true
+
+    - name: Patch ingress controller to use new certificate
+      ansible.builtin.command: >
+        oc patch ingresscontroller.operator default
+        --type=merge
+        -p '{"spec":{"defaultCertificate":{"name":"{{ secret_name }}"}}}'
+        -n openshift-ingress-operator
+      changed_when: true
+
+    # --------------------------------------------------------------------------
+    # 4. Wait for ingress controller to roll out
+    # --------------------------------------------------------------------------
+    - name: Wait for ingress controller to finish rollout
+      ansible.builtin.command: >
+        oc get ingresscontroller default -n openshift-ingress-operator
+        -o jsonpath='{.status.conditions[?(@.type=="Available")].status}'
+      register: ingress_status
+      retries: 20
+      delay: 15
+      until: ingress_status.stdout == "True"
+      changed_when: false
+
+    # --------------------------------------------------------------------------
+    # 5. Verify
+    # --------------------------------------------------------------------------
+    - name: Verify certificate on ingress endpoint
+      ansible.builtin.command: >
+        openssl s_client -connect console-openshift-console.{{ ingress_domain }}:443
+        -servername console-openshift-console.{{ ingress_domain }}
+        </dev/null
+      register: tls_check
+      changed_when: false
+      failed_when: false
+
+    - name: Print completion summary
+      ansible.builtin.debug:
+        msg:
+          - "✅  Certificate obtained for *.{{ ingress_domain }}"
+          - "✅  CA bundle ConfigMap: {{ configmap_name }} (openshift-config)"
+          - "✅  TLS Secret: {{ secret_name }} (openshift-ingress)"
+          - "✅  Ingress controller patched and Available"
+          - "🔔  Certificate expires in ~90 days — re-run this playbook to renew"
