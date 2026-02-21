@@ -9,10 +9,18 @@
 # Defaults to KUBECONFIG env var, then ~/.kube/config.
 kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') + '/.kube/config', true) }}"
 
-# SSH private key used to connect to the SNO node as the 'core' user.
-# This is the key you provided during Assisted Installer image creation.
-ssh_key_path: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa"
-
+# Private key used to connect to the SNO node as the 'core' user.
+# Resolution order:
+#   1. SNO_SSH_KEY env var (export SNO_SSH_KEY=~/.ssh/my_key)
+#   2. ~/.ssh/id_ed25519_openshift  (recommended, OpenShift-specific key)
+#   3. ~/.ssh/id_rsa                (legacy fallback)
+#
+# Override at runtime:
+#   ansible-playbook sno-day2.yml -e ssh_key_path=~/.ssh/my_other_key
+ssh_key_path: >-
+  {{ lookup('env', 'SNO_SSH_KEY')
+     | default(lookup('env', 'HOME') + '/.ssh/id_ed25519_openshift', true)
+     | default(lookup('env', 'HOME') + '/.ssh/id_rsa', true) }}
 # ------------------------------------------------------------------
 # Storage
 # ------------------------------------------------------------------
