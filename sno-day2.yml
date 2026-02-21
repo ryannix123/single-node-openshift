@@ -474,7 +474,7 @@
             name: kubevirt-hyperconverged
             namespace: openshift-cnv
           spec:
-            enableCommonBootImageImport: false
+            enableCommonBootImageImport: true
 
     - name: Wait for HyperConverged to be Available
       ansible.builtin.command: >
