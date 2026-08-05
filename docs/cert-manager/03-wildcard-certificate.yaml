@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# Wildcard Certificate for the SNO ingress domain
+# Author: Ryan Nix <ryan.nix@gmail.com>
+# Repo:   https://github.com/ryannix123/single-node-openshift
+#
+# cert-manager requests *.apps.sno.openshifthelp.com from Let's Encrypt via
+# the DNS-01 Cloudflare solver, then writes the result into the
+# letsencrypt-wildcard secret in openshift-ingress. The ingress controller is
+# pointed at that secret once (see README.md), and cert-manager rotates the
+# secret contents in place at ~day 60 of the 90-day lifetime. No re-run needed.
+#
+# IMPORTANT: while testing, set issuerRef.name to letsencrypt-staging. Once you
+# see a Ready certificate, change it to letsencrypt-prod and re-apply. Switching
+# issuers triggers a fresh issuance automatically.
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-wildcard
+  namespace: openshift-ingress
+spec:
+  # Secret cert-manager creates/updates. The ingresscontroller references this.
+  secretName: letsencrypt-wildcard
+
+  # Start on staging. Flip to letsencrypt-prod after a successful test.
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+
+  commonName: '*.apps.sno.openshifthelp.com'
+  dnsNames:
+    - '*.apps.sno.openshifthelp.com'
+
+  # Optional but explicit: renew when 1/3 of lifetime remains (~day 60 of 90).
+  # This is the cert-manager default; stated here for clarity in the repo.
+  duration: 2160h    # 90 days
+  renewBefore: 720h  # 30 days

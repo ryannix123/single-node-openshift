@@ -1,0 +1,42 @@
+---
+# =============================================================================
+# cert-manager Operator for Red Hat OpenShift - install via OLM
+# Author: Ryan Nix <ryan.nix@gmail.com>
+# Repo:   https://github.com/ryannix123/single-node-openshift
+#
+# This installs the Red Hat GA operator (NOT the community upstream). It runs
+# in the cert-manager-operator namespace and, in turn, deploys the cert-manager
+# controller pods into the cert-manager namespace.
+#
+# Channel stable-v1 is the default/suggested channel. installPlanApproval is
+# Automatic so z-stream patches land without manual approval — fine for a
+# homelab; set to Manual if you want to gate upgrades.
+#
+# Apply this first, then wait for the operator to report Succeeded before
+# applying the issuers and certificate:
+#   oc get csv -n cert-manager-operator -w
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-cert-manager-operator
+  namespace: cert-manager-operator
+spec:
+  upgradeStrategy: Default
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-cert-manager-operator
+  namespace: cert-manager-operator
+spec:
+  channel: stable-v1
+  name: openshift-cert-manager-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

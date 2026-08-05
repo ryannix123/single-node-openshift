@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# Let's Encrypt ClusterIssuers (staging + production)
+# Author: Ryan Nix <ryan.nix@gmail.com>
+# Repo:   https://github.com/ryannix123/single-node-openshift
+#
+# Two issuers are defined:
+#   - letsencrypt-staging : untrusted certs, very loose rate limits. Use this
+#                           FIRST to prove the Cloudflare solver works.
+#   - letsencrypt-prod    : real trusted certs, strict rate limits
+#                           (5 duplicate certs per week). Switch to this only
+#                           after staging issues a Ready certificate.
+#
+# Both solve the DNS-01 challenge through Cloudflare using the API token
+# stored in the cloudflare-api-token secret (see 01-cloudflare-secret.yaml).
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ryan.nix@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ryan.nix@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
