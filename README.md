@@ -95,15 +95,13 @@ See [`vars/defaults.yml`](vars/defaults.yml) for all available variables and the
 
 ---
 
-## Optional Add-ons
+## Automated TLS Certificates
 
-After the day 2 playbook completes, you can layer in additional capabilities using the pre-built manifests:
+Secure the SNO ingress domain — and the OpenShift web console served through it — with a free Let's Encrypt **wildcard** certificate that is obtained and **renewed automatically inside the cluster** by the cert-manager Operator for Red Hat OpenShift.
 
-| Add-on | Manifests | Notes |
-|--------|-----------|-------|
-| Ansible Automation Platform | `manifests/operators/aap/` | Requires 12+ cores, 48GB RAM |
-| Advanced Cluster Management | `manifests/operators/acm/` | Requires 16+ cores, 64GB RAM |
-| Let's Encrypt TLS certs | `manifests/tls/` | See [TLS Guide](docs/02-tls.md) |
+There's no certbot to run on your workstation and no quarterly renewal step. cert-manager solves the DNS-01 challenge through Cloudflare and rotates the certificate in place at ~day 60 of its 90-day lifetime. You point the ingress controller at the managed secret once, and it's hands-off from then on.
+
+See the [cert-manager TLS Guide](docs/cert-manager/README.md) for the full walkthrough and manifests.
 
 ---
 
@@ -113,8 +111,6 @@ After the day 2 playbook completes, you can layer in additional capabilities usi
 |-------|-----|-----|---------|
 | Base cluster | 8 cores | 32 GB | 120 GB boot + data disk |
 | With Virtualization | 8 cores | 32 GB | 120 GB + 100 GB |
-| With AAP | 12 cores | 48 GB | 120 GB + 100 GB |
-| With ACM | 16 cores | 64 GB | 120 GB + 200 GB |
 | Full stack | 16+ cores | 64 GB+ | 120 GB + 500 GB |
 
 An NVMe drive for your data disk makes a noticeable difference in performance.
@@ -130,18 +126,16 @@ vars/
 
 docs/
   01-installation.md      # Getting SNO installed via Assisted Installer
-  02-tls.md               # Free Let's Encrypt certificates
-  03-optional-operators.md  # AAP, ACM, and other add-ons
-
-manifests/
-  operators/
-    aap/                  # Ansible Automation Platform 2.6
-    acm/                  # Advanced Cluster Management
-  tls/                    # Let's Encrypt configuration
+  03-optional-operators.md  # Optional add-ons
+  cert-manager/           # Automated Let's Encrypt wildcard TLS via cert-manager
+    README.md             # TLS guide — start here
+    00-operator-subscription.yaml
+    01-cloudflare-secret.yaml
+    02-clusterissuers.yaml
+    03-wildcard-certificate.yaml
 
 scripts/
   sno-shutdown.sh         # Safe shutdown with certificate rotation
-  renew-letsencrypt.sh    # Certificate renewal
 ```
 
 ---
@@ -154,15 +148,13 @@ SNO clusters that sit idle can develop certificate problems. Always shut down us
 ./scripts/sno-shutdown.sh
 ```
 
-It handles certificate rotation automatically before the node powers off.
+It handles rotation of the cluster's internal control-plane certificates automatically before the node powers off. (This is separate from the Let's Encrypt ingress certificate, which cert-manager renews on its own.)
 
 ---
 
 ## Tested With
 
 - OpenShift 4.15 – 4.21
-- Ansible Automation Platform 2.5, 2.6
-- Advanced Cluster Management 2.10, 2.11, 2.12
 
 ---
 
