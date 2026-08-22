@@ -211,6 +211,102 @@ Then apply your `LVMCluster` (keep `forceWipeDevicesAndDestroyAllData: true` for
 
 ---
 
+## LVMCluster Stuck `Progressing` or `Failed` — the Empty-Disk Trap
+
+**Symptom.** The operator installs fine and the `LVMCluster` is created, but it never reaches `Ready`. The `vg-manager` log shows `vgcreate` failing over and over:
+
+```
+vgcreate vg1 --addtag @lvms /dev/sda /dev/nvme0n1
+→ exit status 5: Cannot use /dev/sda: device not found.
+  Command requires all devices to be found.
+```
+
+**Why it happens.** When the `LVMCluster` has **no `deviceSelector`**, LVMS *auto-discovers* and claims **every empty block device** on the node — not just your data disk. Most bare-metal machines expose a second empty device: a built-in SD/MMC card reader or an unused USB slot shows up as a **0-byte disk** (often `/dev/sda`). `vgcreate` requires *all* listed devices to open, so that phantom 0B device fails the whole command and the VG never forms. Auto-discovery is only safe on a VM with exactly one clean data disk.
+
+Check what the operator sees:
+
+```bash
+oc -n openshift-lvm-storage logs -l app.kubernetes.io/component=vg-manager --tail=80
+oc get lvmcluster sno-lvmcluster -n openshift-lvm-storage -o yaml   # look at status → nodeStatus
+```
+
+### The fix: pin the real data disk
+
+Point the `LVMCluster` at a specific disk with a stable `by-id` path so the card reader is never in the list.
+
+> ⚠️ **An `LVMCluster`'s `deviceClass` is immutable.** You cannot edit the device selection on the existing object — you must delete it first, or your change is silently ignored.
+
+```bash
+# 1. Delete the stuck cluster and wait for cleanup to finish
+oc delete lvmcluster sno-lvmcluster -n openshift-lvm-storage --wait
+oc get lvmcluster -n openshift-lvm-storage      # expect: No resources found
+
+# 2. Find the stable path for your data disk (NOT the OS disk)
+oc debug node/<node> -- chroot /host bash -c \
+  'for l in /dev/disk/by-id/nvme-*; do [ "$(readlink -f "$l")" = /dev/nvme0n1 ] \
+   && printf "/dev/disk/by-id/%s\n" "$(basename "$l")"; done | grep -v nvme-eui'
+```
+
+Then recreate the `LVMCluster` with an explicit `deviceSelector` (this is what the Day 2 playbook does when you pass `-e storage_device=…`):
+
+```yaml
+spec:
+  storage:
+    deviceClasses:
+      - name: vg1
+        default: true
+        deviceSelector:
+          paths:
+            - /dev/disk/by-id/nvme-WD_Green_SN350_2TB_2321XXXXXXXX
+          forceWipeDevicesAndDestroyAllData: true
+        thinPoolConfig:
+          name: thin-pool-1
+          sizePercent: 90
+          overprovisionRatio: 10
+```
+
+With the disk pinned, LVMS ignores the 0B reader entirely and the VG comes up. **Takeaway for the team: on physical hardware, always pin the data disk by `by-id` path — never rely on auto-discovery.**
+
+---
+
+## Verify Storage End-to-End
+
+After a rebuild, confirm the whole provisioning path actually works — StorageClass, volume group, thin pool, and mount — with a throwaway PVC and pod. This binds a real volume against `lvms-vg1`, writes to it, and cleans up in about 20 seconds:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: lvms-smoke, namespace: default }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+  storageClassName: lvms-vg1
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: lvms-smoke, namespace: default }
+spec:
+  restartPolicy: Never
+  containers:
+    - name: writer
+      image: registry.access.redhat.com/ubi9/ubi-minimal
+      command: ["sh", "-c", "echo ok > /data/test && cat /data/test && sleep 5"]
+      volumeMounts: [{ name: vol, mountPath: /data }]
+  volumes:
+    - name: vol
+      persistentVolumeClaim: { claimName: lvms-smoke }
+EOF
+
+# Wait for the pod, read what it wrote, then clean up
+oc -n default wait --for=condition=Ready pod/lvms-smoke --timeout=90s && oc -n default logs lvms-smoke
+oc -n default delete pod/lvms-smoke pvc/lvms-smoke
+```
+
+If the logs print `ok`, provisioning is healthy end-to-end. If the PVC stays `Pending`, the StorageClass uses `WaitForFirstConsumer`, so the volume only provisions once the pod schedules — check `oc -n default describe pvc lvms-smoke` and the `topolvm` controller pods in `openshift-storage` / `openshift-lvm-storage`.
+
+---
+
 ## Next Step
 
 ➡️ [Run the Day 2 playbook](../README.md#step-2--run-the-day-2-playbook)

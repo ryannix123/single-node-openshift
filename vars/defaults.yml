@@ -1,4 +1,3 @@
----
 # =============================================================================
 # Single Node OpenShift - Day 2 Operations: Default Variables
 # Override any of these on the command line with -e key=value
@@ -9,47 +8,77 @@
 # Defaults to KUBECONFIG env var, then ~/.kube/config.
 kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') + '/.kube/config', true) }}"
 
-# Private key used to connect to the SNO node as the 'core' user.
-# Resolution order:
-#   1. SNO_SSH_KEY env var (export SNO_SSH_KEY=~/.ssh/my_key)
-#   2. ~/.ssh/id_ed25519_openshift  (recommended, OpenShift-specific key)
-#   3. ~/.ssh/id_rsa                (legacy fallback)
+# =============================================================================
+# Storage — device selection
+# =============================================================================
+# This playbook no longer SSHes into the node. The LVM Storage operator owns
+# disk selection and wiping, so there is NO SSH key to configure.
 #
-# Override at runtime:
-#   ansible-playbook sno-day2.yml -e ssh_key_path=~/.ssh/my_other_key
-ssh_key_path: >-
-  {{ lookup('env', 'SNO_SSH_KEY')
-     | default(lookup('env', 'HOME') + '/.ssh/id_ed25519_openshift', true)
-     | default(lookup('env', 'HOME') + '/.ssh/id_rsa', true) }}
-# ------------------------------------------------------------------
-# Storage
-# ------------------------------------------------------------------
+# >>> ON BARE METAL, SET AN EXPLICIT DISK. <<<
+# Leaving this empty triggers AUTO-DISCOVERY, and LVMS in auto mode claims
+# EVERY empty block device on the node. Physical machines usually expose more
+# than one: a built-in SD/MMC card reader or an empty USB slot shows up as a
+# 0-byte disk (e.g. /dev/sda), and vgcreate then fails hard with
+# "Cannot use /dev/sda: device not found. Command requires all devices to be
+# found." Auto-discovery is only reliable on a VM with exactly ONE clean data
+# disk. (The playbook now pre-checks this and refuses to guess when it finds
+# more than one empty disk.)
+#
+# Set storage_device to a SPECIFIC disk using a stable /dev/disk/by-id/ path,
+# never /dev/sdX or /dev/nvmeXnY (kernel names reorder across reboots and could
+# point the wipe at the wrong disk).
+#
+#   Find stable paths on the node (no SSH needed):
+#     oc debug node/<node> -- chroot /host ls -l /dev/disk/by-id/
+#   Example:
+#     storage_device: /dev/disk/by-id/nvme-WD_Green_SN350_2TB_2321XXXXXXXX
+#
+# NOTE: an LVMCluster's deviceClass is IMMUTABLE. If a cluster already exists,
+# changing this value and re-running will NOT take effect — you must delete the
+# LVMCluster first, then re-run:
+#     oc delete lvmcluster sno-lvmcluster -n openshift-lvm-storage --wait
+storage_device: ""
 
-# Block device to wipe and hand to LVM.
-# Use `lsblk` on your SNO node to confirm the correct device name.
-# Common values: /dev/sdb, /dev/nvme1n1, /dev/vdb
-storage_device: /dev/nvme1n1
+# When storage_device IS set, tell the operator to wipe any existing partition
+# table, filesystem, or LVM metadata on it before creating the volume group.
+# Ignored when storage_device is empty (auto-discovery only uses empty disks).
+# ⚠️ true = permanently destroys ALL data on that device.
+storage_force_wipe: true
 
-# Name of the LVM StorageClass created by the operator.
-# This matches the deviceClass name in the LVMCluster spec (vg1 → lvms-vg1).
-storage_class: lvms-vg1
+# Pre-flight safety guard. When storage_device is set, the playbook uses
+# `oc debug node` (API-based, no SSH) to confirm the chosen disk does NOT back
+# an OS mount (/, /boot, /sysroot, /var) and refuses to proceed if it does.
+# Set to false to skip the check (not recommended).
+validate_storage_device: true
+
+# =============================================================================
+# Storage — LVM layout
+# =============================================================================
+lvm_namespace: openshift-lvm-storage
+lvm_cluster_name: sno-lvmcluster
+lvm_vg_name: vg1
+lvm_thinpool_name: thin-pool-1
+lvm_size_percent: 90
+lvm_overprovision_ratio: 10
+
+# The StorageClass the operator creates is always named lvms-<vgName>.
+# Leave this derived unless you have a reason to override it.
+storage_class: "lvms-{{ lvm_vg_name }}"
 
 # LVM Operator subscription channel.
 # Should match your OCP version: stable-4.19, stable-4.20, stable-4.21, etc.
 lvm_channel: stable-4.21
 
-# ------------------------------------------------------------------
+# =============================================================================
 # Image Registry
-# ------------------------------------------------------------------
-
+# =============================================================================
 # PVC size for the internal image registry.
 # 100Gi is comfortable for a home lab; increase if you push many images.
 registry_size: 100Gi
 
-# ------------------------------------------------------------------
+# =============================================================================
 # Cluster Monitoring (Prometheus)
-# ------------------------------------------------------------------
-
+# =============================================================================
 # PVC size for each Prometheus replica.
 monitoring_size: 40Gi
 
@@ -59,10 +88,9 @@ monitoring_retention: 7d
 # PVC size for Alertmanager.
 alertmanager_size: 2Gi
 
-# ------------------------------------------------------------------
+# =============================================================================
 # Timeouts
-# ------------------------------------------------------------------
-
+# =============================================================================
 # How many retries when waiting for operators to become ready.
 # Each retry waits `operator_delay` seconds.
 # Total wait = operator_retries × operator_delay

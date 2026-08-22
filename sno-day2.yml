@@ -10,12 +10,21 @@
 # Usage:
 #   ansible-playbook sno-day2.yml
 #
+# This playbook talks to the cluster ENTIRELY through `oc` / the Kubernetes API.
+# It no longer SSHes into the node — disk wiping is delegated to the LVM Storage
+# operator via `forceWipeDevicesAndDestroyAllData`, so there is no SSH key to
+# manage and no way to accidentally wipe the OS disk from a shell task.
+#
 # Overrides (use -e or -e @my-vars.yml):
-#   storage_device   - Block device to wipe          (default: /dev/sdb)
-#   storage_class    - LVM StorageClass name          (default: lvms-vg1)
-#   lvm_channel      - Operator subscription channel  (default: stable-4.21)
-#   registry_size    - Image registry PVC size        (default: 100Gi)
-#   monitoring_size  - Prometheus PVC size            (default: 40Gi)
+#   storage_device        - Target disk. EMPTY = operator auto-discovers an
+#                           empty disk (safest). Set to a /dev/disk/by-id/ path
+#                           to target a specific disk.          (default: "")
+#   storage_force_wipe    - Wipe existing data on storage_device (default: true)
+#   validate_storage_device - oc-debug guard vs. the OS disk    (default: true)
+#   storage_class         - LVM StorageClass name        (default: lvms-<vg>)
+#   lvm_channel           - Operator subscription channel (default: stable-4.21)
+#   registry_size         - Image registry PVC size       (default: 100Gi)
+#   monitoring_size       - Prometheus PVC size           (default: 40Gi)
 #
 # See vars/defaults.yml for all variables.
 # =============================================================================
@@ -52,121 +61,163 @@
       register: nodes
       failed_when: nodes.resources | length == 0
 
-    # --------------------------------------------------------------------------
-    # 0b. Discover node name and IP
-    # --------------------------------------------------------------------------
     - name: Set sno_node fact
       ansible.builtin.set_fact:
         sno_node: "{{ nodes.resources[0].metadata.name }}"
 
-    - name: Get SNO node internal IP
+    - name: Determine storage selection mode
       ansible.builtin.set_fact:
-        sno_node_ip: >-
-          {{ nodes.resources[0].status.addresses |
-             selectattr('type', 'equalto', 'InternalIP') |
-             map(attribute='address') | first }}
+        explicit_device: "{{ (storage_device | default('') | length > 0) }}"
 
-    - name: Add SNO node to inventory for SSH tasks
-      ansible.builtin.add_host:
-        name: sno_node
-        ansible_host: "{{ sno_node_ip }}"
-        ansible_user: core
-        ansible_ssh_private_key_file: "{{ ssh_key_path }}"
-        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    - name: Report storage selection mode
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Explicit device: ' ~ storage_device ~
+             ' (forceWipe=' ~ (storage_force_wipe | bool) ~ ')'
+             if (explicit_device | bool)
+             else 'Auto-discovery: operator will claim an empty disk on ' ~ sno_node ~
+                  ' (it never selects disks that already hold data).' }}
 
     # --------------------------------------------------------------------------
-    # 1. Wipe the secondary drive via SSH (skipped if LVM already present)
+    # 0a. AUTO-DISCOVERY GUARD — refuse to guess when >1 empty disk exists.
+    #     In auto mode LVMS claims ALL empty disks; a 0B card reader or an empty
+    #     USB/SD slot will poison `vgcreate` ("Cannot use /dev/sda: device not
+    #     found. Command requires all devices to be found."). Fail fast and tell
+    #     the user to pin the real data disk. Runs only in auto-discovery mode.
     # --------------------------------------------------------------------------
-- name: Wipe secondary disk on SNO node
-  hosts: sno_node
-  gather_facts: false
-  become: true
+    - name: "Auto-discovery — list block devices on {{ sno_node }}"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - debug
+          - "node/{{ sno_node }}"
+          - "--"
+          - chroot
+          - /host
+          - lsblk
+          - --json
+          - --paths
+          - -o
+          - NAME,TYPE,SIZE,FSTYPE
+      register: auto_lsblk
+      changed_when: false
+      when: not (explicit_device | bool)
 
-  vars_files:
-    - "{{ playbook_dir }}/vars/defaults.yml"
+    - name: "Auto-discovery — compute eligible empty disks"
+      ansible.builtin.set_fact:
+        auto_candidates: >-
+          {{ (auto_lsblk.stdout | from_json).blockdevices
+             | selectattr('type', 'equalto', 'disk')
+             | rejectattr('children', 'defined')
+             | selectattr('fstype', 'in', [none, ''])
+             | list }}
+      when: not (explicit_device | bool)
 
-  tasks:
-    - name: Check if disk already has LVM children
-      ansible.builtin.command: lsblk -J -o NAME,TYPE {{ storage_device }}
-      register: lsblk_check
+    - name: "Auto-discovery — require exactly one eligible disk"
+      ansible.builtin.assert:
+        that:
+          - auto_candidates | length == 1
+        fail_msg: >-
+          Auto-discovery found {{ auto_candidates | length }} empty disk(s) on
+          {{ sno_node }}: {{ auto_candidates | map(attribute='name')
+          | zip(auto_candidates | map(attribute='size')) | map('join', ' ')
+          | join('; ') }}. LVMS would try to use ALL of them and vgcreate fails
+          if any is a 0B card reader or a removable slot. Re-run pinned to the
+          real data disk, e.g. -e storage_device=/dev/disk/by-id/nvme-XXXX
+          (list them with: oc debug node/{{ sno_node }} -- chroot /host ls -l /dev/disk/by-id/).
+        success_msg: >-
+          One eligible disk found: {{ auto_candidates[0].name }}
+          ({{ auto_candidates[0].size }}) — safe to auto-discover.
+        quiet: true
+      when: not (explicit_device | bool)
+
+    # --------------------------------------------------------------------------
+    # 0b. SAFETY GUARD — never wipe the OS disk
+    #     Runs only when an explicit device is set and validation is enabled.
+    #     Uses `oc debug node` (API-based, no SSH) to inspect the node.
+    # --------------------------------------------------------------------------
+    - name: "Guard — find which whole-disks host the OS on {{ sno_node }}"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - debug
+          - "node/{{ sno_node }}"
+          - "--"
+          - chroot
+          - /host
+          - bash
+          - "-c"
+          - >-
+            for mp in / /boot /sysroot /var /etc; do
+            s=$(findmnt -fno SOURCE "$mp" 2>/dev/null) || true;
+            [ -n "$s" ] && lsblk -no PKNAME "$s" 2>/dev/null;
+            done | sort -u
+      register: os_disks
+      changed_when: false
+      when:
+        - explicit_device | bool
+        - validate_storage_device | bool
+
+    - name: "Guard — resolve {{ storage_device }} to a kernel device name"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - debug
+          - "node/{{ sno_node }}"
+          - "--"
+          - chroot
+          - /host
+          - bash
+          - "-c"
+          - "lsblk -ndo KNAME {{ storage_device }} 2>/dev/null"
+      register: target_kname
       changed_when: false
       failed_when: false
+      when:
+        - explicit_device | bool
+        - validate_storage_device | bool
 
-    - name: Set disk_has_lvm fact
-      ansible.builtin.set_fact:
-        disk_has_lvm: "{{ 'lvm' in lsblk_check.stdout }}"
+    - name: "Guard — target storage device must exist on {{ sno_node }}"
+      ansible.builtin.assert:
+        that:
+          - target_kname.stdout | trim | length > 0
+        fail_msg: >-
+          storage_device '{{ storage_device }}' was not found on {{ sno_node }}.
+          List valid stable paths with:
+          oc debug node/{{ sno_node }} -- chroot /host ls -l /dev/disk/by-id/
+        quiet: true
+      when:
+        - explicit_device | bool
+        - validate_storage_device | bool
 
-    - name: Remove stale device mapper entries
-      ansible.builtin.command: dmsetup remove_all -f
-      changed_when: true
-      failed_when: false
-
-    - name: "Remove all partitions from kernel device table on {{ storage_device }}"
-      ansible.builtin.command: partx -d {{ storage_device }}
-      changed_when: true
-      failed_when: false
-
-    - name: "Wipe {{ storage_device }} - destroy partition table"
-      ansible.builtin.command: sgdisk --zap-all {{ storage_device }}
-      changed_when: true
-      when: not disk_has_lvm
-
-    - name: "Wipe {{ storage_device }} - zero first 10 MB"
-      ansible.builtin.command: dd if=/dev/zero of={{ storage_device }} bs=1M count=10 oflag=direct
-      changed_when: true
-      when: not disk_has_lvm
-
-    - name: "Force kernel to re-read partition table on {{ storage_device }}"
-      ansible.builtin.command: blockdev --rereadpt {{ storage_device }}
-      register: blockdev_result
-      changed_when: blockdev_result.rc == 0
-      failed_when: false
-      when: not disk_has_lvm
-
-    - name: Verify no partitions remain on {{ storage_device }}
-      ansible.builtin.command: lsblk -J -o NAME,TYPE {{ storage_device }}
-      register: lsblk_verify
-      changed_when: false
-
-    - name: Fail if partitions still present after wipe
-      ansible.builtin.fail:
-        msg: "Partitions still present on {{ storage_device }} after wipe: {{ lsblk_verify.stdout }}"
-      when: '"part" in lsblk_verify.stdout'
-
-    - name: Pause 5 seconds for kernel to settle
-      ansible.builtin.pause:
-        seconds: 5
-
-- name: SNO Day 2 Operations (continued)
-  hosts: localhost
-  connection: local
-  gather_facts: false
-
-  vars_files:
-    - "{{ playbook_dir }}/vars/defaults.yml"
-
-  module_defaults:
-    group/kubernetes.core.k8s:
-      kubeconfig: "{{ kubeconfig }}"
-    kubernetes.core.k8s_info:
-      kubeconfig: "{{ kubeconfig }}"
-    kubernetes.core.k8s_json_patch:
-      kubeconfig: "{{ kubeconfig }}"
-
-  tasks:
-
+    - name: "Guard — REFUSE to wipe a disk that hosts the OS"
+      ansible.builtin.assert:
+        that:
+          - (target_kname.stdout | trim) not in (os_disks.stdout_lines | map('trim') | list)
+        fail_msg: >-
+          REFUSING to proceed. storage_device '{{ storage_device }}'
+          (kernel device {{ target_kname.stdout | trim }}) backs an OS mount on
+          {{ sno_node }} [OS disks: {{ os_disks.stdout_lines | join(', ') }}].
+          Point storage_device at your DATA disk, not the boot disk.
+        success_msg: >-
+          Safe: {{ storage_device }} ({{ target_kname.stdout | trim }})
+          is not an OS disk.
+        quiet: true
+      when:
+        - explicit_device | bool
+        - validate_storage_device | bool
 
     # --------------------------------------------------------------------------
-    # 2. Install the LVM Storage Operator
+    # 1. Install the LVM Storage Operator
     # --------------------------------------------------------------------------
-    - name: Create openshift-lvm-storage namespace
+    - name: Create LVM Storage namespace
       kubernetes.core.k8s:
         state: present
         definition:
           apiVersion: v1
           kind: Namespace
           metadata:
-            name: openshift-lvm-storage
+            name: "{{ lvm_namespace }}"
             labels:
               openshift.io/cluster-monitoring: "true"
 
@@ -178,10 +229,10 @@
           kind: OperatorGroup
           metadata:
             name: openshift-lvm-storage-operatorgroup
-            namespace: openshift-lvm-storage
+            namespace: "{{ lvm_namespace }}"
           spec:
             targetNamespaces:
-              - openshift-lvm-storage
+              - "{{ lvm_namespace }}"
 
     - name: Create LVM Operator Subscription
       kubernetes.core.k8s:
@@ -191,7 +242,7 @@
           kind: Subscription
           metadata:
             name: lvms-operator
-            namespace: openshift-lvm-storage
+            namespace: "{{ lvm_namespace }}"
           spec:
             channel: "{{ lvm_channel }}"
             installPlanApproval: Automatic
@@ -203,7 +254,7 @@
       kubernetes.core.k8s_info:
         api_version: operators.coreos.com/v1alpha1
         kind: InstallPlan
-        namespace: openshift-lvm-storage
+        namespace: "{{ lvm_namespace }}"
       register: lvm_installplan
       retries: 20
       delay: 10
@@ -217,7 +268,7 @@
           kind: InstallPlan
           metadata:
             name: "{{ item.metadata.name }}"
-            namespace: openshift-lvm-storage
+            namespace: "{{ lvm_namespace }}"
           spec:
             approved: true
       loop: "{{ lvm_installplan.resources }}"
@@ -228,7 +279,7 @@
         api_version: operators.coreos.com/v1alpha1
         kind: Subscription
         name: lvms-operator
-        namespace: openshift-lvm-storage
+        namespace: "{{ lvm_namespace }}"
       register: lvm_sub_debug
 
     - name: Print LVM subscription state
@@ -242,7 +293,7 @@
       kubernetes.core.k8s_info:
         api_version: operators.coreos.com/v1alpha1
         kind: ClusterServiceVersion
-        namespace: openshift-lvm-storage
+        namespace: "{{ lvm_namespace }}"
       register: lvm_csv
       retries: "{{ operator_retries }}"
       delay: "{{ operator_delay }}"
@@ -251,8 +302,34 @@
         lvm_csv.resources | map(attribute='status.phase') | select('equalto', 'Succeeded') | list | length > 0
 
     # --------------------------------------------------------------------------
-    # 3. Create LVMCluster
+    # 2. Create LVMCluster
+    #    The operator does the disk wiping. When storage_device is set we pass an
+    #    explicit deviceSelector with forceWipeDevicesAndDestroyAllData; when it
+    #    is empty we omit deviceSelector and let the operator auto-discover an
+    #    empty disk (it will never claim a disk that already holds data).
     # --------------------------------------------------------------------------
+    - name: Build LVM deviceClass definition
+      ansible.builtin.set_fact:
+        lvm_device_class: >-
+          {{
+            {
+              'name': lvm_vg_name,
+              'default': true,
+              'thinPoolConfig': {
+                'name': lvm_thinpool_name,
+                'sizePercent': lvm_size_percent | int,
+                'overprovisionRatio': lvm_overprovision_ratio | int
+              }
+            } | combine(
+              {
+                'deviceSelector': {
+                  'paths': [storage_device],
+                  'forceWipeDevicesAndDestroyAllData': (storage_force_wipe | bool)
+                }
+              } if (explicit_device | bool) else {}
+            )
+          }}
+
     - name: Create LVMCluster
       kubernetes.core.k8s:
         state: present
@@ -260,23 +337,15 @@
           apiVersion: lvm.topolvm.io/v1alpha1
           kind: LVMCluster
           metadata:
-            name: sno-lvmcluster
-            namespace: openshift-lvm-storage
+            name: "{{ lvm_cluster_name }}"
+            namespace: "{{ lvm_namespace }}"
           spec:
             storage:
-              deviceClasses:
-                - name: vg1
-                  thinPoolConfig:
-                    name: thin-pool-1
-                    sizePercent: 90
-                    overprovisionRatio: 10
-                  deviceSelector:
-                    paths:
-                      - "{{ storage_device }}"
+              deviceClasses: "{{ [lvm_device_class] }}"
 
     - name: Show raw LVMCluster status (debug)
       ansible.builtin.command: >
-        oc get lvmcluster sno-lvmcluster -n openshift-lvm-storage -o jsonpath='{.status}'
+        oc get lvmcluster {{ lvm_cluster_name }} -n {{ lvm_namespace }} -o jsonpath='{.status}'
       register: lvmcluster_raw
       changed_when: false
 
@@ -286,7 +355,7 @@
 
     - name: Wait for LVMCluster to become Ready
       ansible.builtin.command: >
-        oc get lvmcluster sno-lvmcluster -n openshift-lvm-storage
+        oc get lvmcluster {{ lvm_cluster_name }} -n {{ lvm_namespace }}
         -o jsonpath='{.status.state}'
       register: lvm_ready
       retries: "{{ operator_retries }}"
@@ -295,7 +364,7 @@
       changed_when: false
 
     # --------------------------------------------------------------------------
-    # 4. Set lvms-vg1 as the default StorageClass
+    # 3. Set the LVMS StorageClass as the cluster default
     # --------------------------------------------------------------------------
     - name: Get names of any currently-default StorageClasses
       ansible.builtin.command: >
@@ -325,7 +394,7 @@
         msg: "{{ sc_list.stdout_lines }}"
 
     # --------------------------------------------------------------------------
-    # 5. Patch the image registry to use persistent storage
+    # 4. Patch the image registry to use persistent storage
     # --------------------------------------------------------------------------
     - name: Create PVC for image registry
       kubernetes.core.k8s:
@@ -361,7 +430,7 @@
       changed_when: false
 
     # --------------------------------------------------------------------------
-    # 6. Patch cluster monitoring to use persistent storage
+    # 5. Patch cluster monitoring to use persistent storage
     # --------------------------------------------------------------------------
     - name: Create or update cluster-monitoring-config ConfigMap
       kubernetes.core.k8s:
@@ -405,7 +474,7 @@
       changed_when: false
 
     # --------------------------------------------------------------------------
-    # 7. Install OpenShift Virtualization
+    # 6. Install OpenShift Virtualization
     # --------------------------------------------------------------------------
     - name: Create openshift-cnv namespace
       kubernetes.core.k8s:
@@ -492,10 +561,10 @@
     - name: Print completion summary
       ansible.builtin.debug:
         msg:
-          - "✅  Drive {{ storage_device }} wiped"
-          - "✅  LVM Storage Operator installed ({{ lvm_channel }})"
-          - "✅  LVMCluster created and Ready"
-          - "✅  StorageClass {{ storage_class }} set as cluster default"
-          - "✅  Image registry patched → {{ registry_size }} PVC"
-          - "✅  Cluster monitoring patched → {{ monitoring_size }} PVC ({{ monitoring_retention }} retention)"
-          - "✅  OpenShift Virtualization installed and HyperConverged is Available"
+          - "{{ 'Storage disk: ' ~ storage_device ~ ' (wiped by operator, forceWipe=' ~ (storage_force_wipe | bool) ~ ')' if (explicit_device | bool) else 'Storage disk: auto-discovered empty disk on ' ~ sno_node }}"
+          - "LVM Storage Operator installed ({{ lvm_channel }})"
+          - "LVMCluster '{{ lvm_cluster_name }}' created and Ready"
+          - "StorageClass {{ storage_class }} set as cluster default"
+          - "Image registry patched -> {{ registry_size }} PVC"
+          - "Cluster monitoring patched -> {{ monitoring_size }} PVC ({{ monitoring_retention }} retention)"
+          - "OpenShift Virtualization installed and HyperConverged is Available"
