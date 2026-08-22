@@ -10,7 +10,7 @@
 # pointed at that secret once (see README.md), and cert-manager rotates the
 # secret contents in place at ~day 60 of the 90-day lifetime. No re-run needed.
 #
-# IMPORTANT: while testing, set issuerRef.name to letsencrypt-staging. Once you
+# IMPORTANT: while testing, set issuerRef.name to letsencrypt-prod. Once you
 # see a Ready certificate, change it to letsencrypt-prod and re-apply. Switching
 # issuers triggers a fresh issuance automatically.
 # =============================================================================
@@ -25,7 +25,7 @@ spec:
 
   # Start on staging. Flip to letsencrypt-prod after a successful test.
   issuerRef:
-    name: letsencrypt-staging
+    name: letsencrypt-prod
     kind: ClusterIssuer
 
   commonName: '*.apps.sno.openshifthelp.com'
