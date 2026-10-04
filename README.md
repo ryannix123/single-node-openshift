@@ -135,20 +135,61 @@ docs/
     03-wildcard-certificate.yaml
 
 scripts/
-  sno-shutdown.sh         # Safe shutdown with certificate rotation
+  sno-shutdown.sh         # Clean shutdown + "how long can it stay off" report
+  sno-csr-autoapprove.sh  # Boot-time kubelet CSR approval (homelab only)
+
+manifests/
+  99-master-sno-csr-autoapprove.yaml  # Installs the auto-approver — reboots the node
 ```
 
 ---
 
 ## Safe Shutdown
 
-SNO clusters that sit idle can develop certificate problems. Always shut down using the included script:
-
 ```bash
 ./scripts/sno-shutdown.sh
 ```
 
-It handles rotation of the cluster's internal control-plane certificates automatically before the node powers off. (This is separate from the Let's Encrypt ingress certificate, which cert-manager renews on its own.)
+Approves any pending kubelet certificate requests, then tells you how long the
+node can stay off: power on before the **no-touch restart** date and it rejoins
+on its own. The dates are also saved to `~/.sno-last-shutdown` so you can check
+them when you come back.
+
+After that date, the kubelet returns asking for certificate approval. No
+shutdown script can prevent that: kubelet certificates are capped at roughly
+30 days by the cluster's signer, however recently they rotated.
+(All of this is separate from the Let's Encrypt ingress certificate, which
+cert-manager renews on its own.)
+
+### Coming back after a long shutdown
+
+If the node has been off past its no-touch date, approve its certificate
+requests from the node itself:
+
+```bash
+ssh core@<node-ip>
+
+# then, on the node:
+K=/etc/kubernetes/static-pod-resources/kube-apiserver-certs/secrets/node-kubeconfigs/localhost-recovery.kubeconfig
+sudo oc --kubeconfig=$K get csr --no-headers | awk '/Pending/ {print $1}' \
+  | xargs -r sudo oc --kubeconfig=$K adm certificate approve
+```
+
+Run the approve line again after 30 seconds — a second request follows the
+first. Expect the API to drop and return a few times over the next 10–20
+minutes while operators roll out new certificates. Don't restart anything
+while that happens.
+
+### Making it automatic (homelab only)
+
+```bash
+oc apply -f manifests/99-master-sno-csr-autoapprove.yaml
+```
+
+Installs a boot-time service that does the approval above for you, for this
+node's own kubelet requests only. **Applying it reboots the node.** Do not use
+it on multi-node or production clusters — OpenShift refuses to auto-approve
+these requests by design, because it cannot prove a returning node's identity.
 
 ---
 

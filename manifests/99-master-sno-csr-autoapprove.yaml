@@ -1,0 +1,53 @@
+# 99-master-sno-csr-autoapprove.yaml
+#
+# HOMELAB SNO ONLY. Installs scripts/sno-csr-autoapprove.sh on the node and runs
+# it at every boot: for one hour it approves this node's own kubelet CSRs, so a
+# cluster powered off past its kubelet certificate expiry comes back without an
+# SSH session. See the header of that script for why OpenShift won't do this by
+# itself, and why that's the right default everywhere except a single node you own.
+#
+# Applying or deleting this MachineConfig REBOOTS THE NODE. Do it when you can
+# afford ten minutes of downtime.
+#
+#   oc apply  -f manifests/99-master-sno-csr-autoapprove.yaml
+#   oc delete -f manifests/99-master-sno-csr-autoapprove.yaml   # remove it
+#
+# The script is embedded below as base64. If you edit
+# scripts/sno-csr-autoapprove.sh, regenerate the `source:` line with:
+#
+#   echo "data:text/plain;charset=utf-8;base64,$(base64 < scripts/sno-csr-autoapprove.sh | tr -d '\n')"
+#
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  name: 99-master-sno-csr-autoapprove
+  labels:
+    machineconfiguration.openshift.io/role: master
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+        - path: /usr/local/bin/sno-csr-autoapprove.sh
+          mode: 493          # 0755
+          overwrite: true
+          contents:
+            source: data:text/plain;charset=utf-8;base64,IyEvYmluL2Jhc2gKIyBzbm8tY3NyLWF1dG9hcHByb3ZlLnNoIOKAlCBydW5zIE9OIHRoZSBub2RlLCBhcyByb290LCBhdCBib290LgojCiMgQXBwcm92ZXMgdGhpcyBub2RlJ3Mgb3duIGt1YmVsZXQgY2VydGlmaWNhdGUgcmVxdWVzdHMgZm9yIHRoZSBmaXJzdCBob3VyCiMgYWZ0ZXIgYm9vdCwgc28gYSBob21lbGFiIFNOTyB0aGF0IHdhcyBwb3dlcmVkIG9mZiBwYXN0IGl0cyBrdWJlbGV0CiMgY2VydGlmaWNhdGUncyBleHBpcnkgcmVqb2lucyB3aXRob3V0IGFueW9uZSBTU0hpbmcgaW4uCiMKIyBIT01FTEFCIE9OTFkuIE9wZW5TaGlmdCByZWZ1c2VzIHRvIGRvIHRoaXMgYnkgZGVzaWduOiBvbiBhIHBsYXRmb3JtLW5vbmUKIyBjbHVzdGVyIHRoZXJlIGlzIG5vIE1hY2hpbmUgb2JqZWN0IHRvIHByb3ZlIGEgcmV0dXJuaW5nIG5vZGUgaXMgd2hvIGl0IHNheXMKIyBpdCBpcywgc28gYSBDU1IgZnJvbSB0aGUgYm9vdHN0cmFwcGVyIGxvb2tzIGV4YWN0bHkgbGlrZSBhIHN0cmFuZ2VyIGFza2luZyB0bwojIGpvaW4uIE9uIGEgc2luZ2xlIG5vZGUgeW91IG93biwgdGhhdCBzdHJhbmdlciBjYW4gb25seSBiZSB0aGUgbm9kZSBpdHNlbGYuCiMgT24gYW55dGhpbmcgbXVsdGktbm9kZSBvciBwcm9kdWN0aW9uLCBkbyBub3QgaW5zdGFsbCB0aGlzLgojCiMgRGVsaXZlcmVkIGJ5IG1hbmlmZXN0cy85OS1tYXN0ZXItc25vLWNzci1hdXRvYXBwcm92ZS55YW1sLiBMb2dzIHRvIHRoZQojIGpvdXJuYWw6ICBqb3VybmFsY3RsIC11IHNuby1jc3ItYXV0b2FwcHJvdmUKCnNldCAtdW8gcGlwZWZhaWwKCmV4cG9ydCBLVUJFQ09ORklHPS9ldGMva3ViZXJuZXRlcy9zdGF0aWMtcG9kLXJlc291cmNlcy9rdWJlLWFwaXNlcnZlci1jZXJ0cy9zZWNyZXRzL25vZGUta3ViZWNvbmZpZ3MvbG9jYWxob3N0LXJlY292ZXJ5Lmt1YmVjb25maWcKV0lORE9XX01JTj0iJHtXSU5ET1dfTUlOOi02MH0iCkJPT1RTVFJBUFBFUj0ic3lzdGVtOnNlcnZpY2VhY2NvdW50Om9wZW5zaGlmdC1tYWNoaW5lLWNvbmZpZy1vcGVyYXRvcjpub2RlLWJvb3RzdHJhcHBlciIKU0hPUlQ9InN5c3RlbTpub2RlOiQoaG9zdG5hbWUgLXMpIgpGVUxMPSJzeXN0ZW06bm9kZTokKGhvc3RuYW1lIC1mIDI+L2Rldi9udWxsIHx8IGhvc3RuYW1lKSIKCmxvZygpIHsgZWNobyAic25vLWNzci1hdXRvYXBwcm92ZTogJCoiOyB9Cgpjb21tYW5kIC12IG9jID4vZGV2L251bGwgfHwgeyBsb2cgIm9jIG5vdCBmb3VuZCBvbiB0aGlzIG5vZGUg4oCUIG5vdGhpbmcgdG8gZG8iOyBleGl0IDA7IH0KCnBlbmRpbmdfbWluZSgpIHsKICBvYyBnZXQgY3NyIC1vIGdvLXRlbXBsYXRlPSd7e3JhbmdlIC5pdGVtc319e3tpZiBub3QgLnN0YXR1c319e3subWV0YWRhdGEubmFtZX19IHt7LnNwZWMuc2lnbmVyTmFtZX19IHt7LnNwZWMudXNlcm5hbWV9fXt7IlxuIn19e3tlbmR9fXt7ZW5kfX0nIDI+L2Rldi9udWxsIFwKICB8IGF3ayAtdiBib290PSIkQk9PVFNUUkFQUEVSIiAtdiBzPSIkU0hPUlQiIC12IGY9IiRGVUxMIiAnCiAgICAgICQyPT0ia3ViZXJuZXRlcy5pby9rdWJlLWFwaXNlcnZlci1jbGllbnQta3ViZWxldCIgJiYgKCQzPT1ib290IHx8ICQzPT1zIHx8ICQzPT1mKSB7IHByaW50ICQxOyBuZXh0IH0KICAgICAgJDI9PSJrdWJlcm5ldGVzLmlvL2t1YmVsZXQtc2VydmluZyIgICAgICAgICAgICAgICAmJiAoJDM9PXMgfHwgJDM9PWYpICAgICAgICAgICAgIHsgcHJpbnQgJDEgfScKfQoKREVBRExJTkU9JCgoICQoZGF0ZSArJXMpICsgV0lORE9XX01JTiAqIDYwICkpCmxvZyAid2F0Y2hpbmcgZm9yIHRoaXMgbm9kZSdzIGt1YmVsZXQgQ1NScyBmb3IgJHtXSU5ET1dfTUlOfSBtaW4gKCR7U0hPUlR9KSIKCkFQUFJPVkVEPTAKd2hpbGUgKCggJChkYXRlICslcykgPCBERUFETElORSApKTsgZG8KICAjIFRoZSBBUEkgY29tZXMgYW5kIGdvZXMgZm9yIGEgd2hpbGUgYWZ0ZXIgYSBsb25nIHNodXRkb3duIGFzIG9wZXJhdG9ycyByb2xsCiAgIyBuZXcgcmV2aXNpb25zLiBKdXN0IHdhaXQgZm9yIGl0LgogIGlmICEgb2MgZ2V0IC0tcmF3IC9yZWFkeXogPi9kZXYvbnVsbCAyPiYxOyB0aGVuCiAgICBzbGVlcCAxNQogICAgY29udGludWUKICBmaQogIGZvciBjc3IgaW4gJChwZW5kaW5nX21pbmUpOyBkbwogICAgaWYgb2MgYWRtIGNlcnRpZmljYXRlIGFwcHJvdmUgIiRjc3IiID4vZGV2L251bGwgMj4mMTsgdGhlbgogICAgICBsb2cgImFwcHJvdmVkICR7Y3NyfSIKICAgICAgQVBQUk9WRUQ9JCgoQVBQUk9WRUQgKyAxKSkKICAgIGZpCiAgZG9uZQogIHNsZWVwIDMwCmRvbmUKCmxvZyAid2luZG93IGNsb3NlZCDigJQgYXBwcm92ZWQgJHtBUFBST1ZFRH0gQ1NSKHMpIgo=
+    systemd:
+      units:
+        - name: sno-csr-autoapprove.service
+          enabled: true
+          contents: |
+            [Unit]
+            Description=Approve this node's own kubelet CSRs after boot (homelab SNO only)
+            After=kubelet.service network-online.target
+            Wants=network-online.target
+
+            [Service]
+            Type=simple
+            ExecStart=/usr/local/bin/sno-csr-autoapprove.sh
+            Restart=no
+
+            [Install]
+            WantedBy=multi-user.target
