@@ -1,0 +1,216 @@
+---
+# =============================================================================
+# sno-recover.yml — bring a Single Node OpenShift cluster back after it was
+# powered off past its kubelet certificate's expiry.
+#
+# What goes wrong: the kubelet's client certificate lasts about 30 days and can
+# only be renewed while the node is running. Power on after it expires and the
+# node stays NotReady, asking for new certificates through CSRs that nobody
+# approves. The console then loops on login, because the OAuth pods can't start
+# on a node that never became Ready.
+#
+# What this does, in order:
+#   1. Picks a route to the API. It tries your kubeconfig from this machine
+#      first; if that doesn't work (expired token, OAuth down), it SSHes to the
+#      node and uses the node's own recovery kubeconfig.
+#   2. Approves pending CSRs, but ONLY this cluster's own kubelet requests:
+#      the client certificate first, then the serving certificate that follows
+#      it. Any other pending CSR is reported and left alone.
+#   3. Waits for the node to be Ready, then for every cluster operator to
+#      settle, reporting stragglers instead of failing on them.
+#   4. Prints the new kubelet certificate expiry, which is your next
+#      "power on before" date.
+#
+# Usage:
+#   ansible-playbook sno-recover.yml                       # API first, SSH if needed
+#   ansible-playbook sno-recover.yml -e sno_node=192.168.1.50
+#   ansible-playbook sno-recover.yml -e recover_via=ssh -e sno_node=sno.lab.example.com
+#
+# Variables:
+#   kubeconfig     kubeconfig for the API route (default: $KUBECONFIG, then
+#                  ~/.kube/config). The installer's auth/kubeconfig is the most
+#                  reliable: its client certificate does not depend on OAuth.
+#   sno_node       node IP or hostname, needed for the SSH route
+#   sno_ssh_user   SSH user on the node (default: core)
+#   recover_via    auto | api | ssh  (default: auto)
+#   co_wait_minutes  how long to wait for operators to settle (default: 30)
+#
+# To make this unnecessary on a homelab node, see manifests/
+# 99-master-sno-csr-autoapprove.yaml, which approves at boot.
+# =============================================================================
+- name: Choose a route to the cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default(lookup('env', 'HOME') + '/.kube/config', true) }}"
+    recover_via: auto
+    sno_ssh_user: core
+  tasks:
+    - name: Check whether the API answers through your kubeconfig
+      ansible.builtin.command: >-
+        oc --kubeconfig {{ kubeconfig }} --request-timeout=15s auth can-i approve certificatesigningrequests
+      register: api_probe
+      changed_when: false
+      failed_when: false
+      when: recover_via in ['auto', 'api']
+
+    - name: Decide
+      ansible.builtin.set_fact:
+        use_api: >-
+          {{ recover_via == 'api' or
+             (recover_via == 'auto' and (api_probe.rc | default(1)) == 0 and 'yes' in (api_probe.stdout | default(''))) }}
+
+    - name: Stop if neither route is available
+      ansible.builtin.fail:
+        msg: >-
+          The API did not accept your kubeconfig ({{ (api_probe.stderr | default('not tried')) | trim | truncate(200) }}),
+          and no node was given for the SSH route. Re-run with -e sno_node=<node IP or hostname>.
+      when: not use_api | bool and (sno_node | default('')) | length == 0
+
+    - name: Use the API from this machine
+      ansible.builtin.add_host:
+        name: sno_target
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        oc: "oc --kubeconfig {{ kubeconfig }}"
+        route: "API via {{ kubeconfig }}"
+        on_node: false
+      when: use_api | bool
+
+    - name: Use the node's own recovery kubeconfig over SSH
+      ansible.builtin.add_host:
+        name: sno_target
+        ansible_host: "{{ sno_node }}"
+        ansible_user: "{{ sno_ssh_user }}"
+        ansible_become: true
+        oc: "oc --kubeconfig /etc/kubernetes/static-pod-resources/kube-apiserver-certs/secrets/node-kubeconfigs/localhost-recovery.kubeconfig"
+        route: "SSH to {{ sno_ssh_user }}@{{ sno_node }}, node recovery kubeconfig"
+        on_node: true
+      when: not use_api | bool
+
+- name: Recover the node
+  hosts: sno_target
+  gather_facts: false
+  # RHCOS does not reliably ship Python, which Ansible's normal modules need on
+  # the target. Every task here uses ansible.builtin.raw (a plain shell command
+  # over SSH, or locally), so the SSH route needs nothing installed on the node.
+  vars:
+    bootstrapper: system:serviceaccount:openshift-machine-config-operator:node-bootstrapper
+    approve_rounds: 10
+    co_wait_minutes: 30
+    # Pending CSRs that are this cluster's own kubelets, and nothing else.
+    # Prints "<name> <signer> <requestor>" per line.
+    csr_template: >-
+      {% raw %}{{range .items}}{{if not .status}}{{.metadata.name}} {{.spec.signerName}}
+      {{.spec.username}}{{"\n"}}{{end}}{{end}}{% endraw %}
+    list_pending: "{{ oc }} get csr -o go-template='{{ csr_template }}'"
+  tasks:
+    - name: Route
+      ansible.builtin.debug:
+        msg: "Recovering through: {{ route }}"
+
+    - name: Wait for the API to answer (it can bounce for a few minutes after boot)
+      ansible.builtin.raw: "{{ oc }} --request-timeout=10s get --raw /readyz"
+      register: readyz
+      changed_when: false
+      retries: 30
+      delay: 10
+      until: readyz.rc == 0
+
+    # ── approve, wait, approve again ────────────────────────────────────────
+    # Round 1 usually approves the kubelet's client CSR; the kubelet then
+    # restarts with it and files a serving CSR, which a later round approves.
+    # Stop when the node is Ready and nothing of ours is pending.
+    - name: Approve this cluster's kubelet CSRs until the node is Ready
+      ansible.builtin.raw: |
+        set -o pipefail
+        approved=0
+        for csr in $({{ list_pending }} | awk -v boot="{{ bootstrapper }}" '
+            $2=="kubernetes.io/kube-apiserver-client-kubelet" && ($3==boot || $3 ~ /^system:node:/) { print $1; next }
+            $2=="kubernetes.io/kubelet-serving"               &&  $3 ~ /^system:node:/             { print $1 }'); do
+          {{ oc }} adm certificate approve "$csr" >/dev/null && echo "approved $csr" && approved=$((approved+1))
+        done
+        ready=$({{ oc }} get nodes -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{" "}{end}')
+        left=$({{ list_pending }} | awk '$2 ~ /kubelet/' | wc -l | tr -d ' ')
+        echo "ready=[$ready] approved=$approved still_pending=$left"
+      args:
+        executable: /bin/bash
+      register: approve
+      changed_when: "'approved csr-' in approve.stdout"
+      retries: "{{ approve_rounds }}"
+      delay: 30
+      until: >-
+        'ready=[True ]' in approve.stdout and 'still_pending=0' in approve.stdout
+
+    - name: Report other pending CSRs (left alone on purpose)
+      ansible.builtin.raw: |
+        set -o pipefail
+        {{ list_pending }} | awk '$2 !~ /kubelet/ {print $1 " (" $2 ", from " $3 ")"}'
+      args:
+        executable: /bin/bash
+      register: others
+      changed_when: false
+
+    - name: Other pending CSRs
+      ansible.builtin.debug:
+        msg: "{{ others.stdout_lines }}"
+      when: others.stdout_lines | length > 0
+
+    # ── let the operators settle ─────────────────────────────────────────────
+    - name: Wait for every cluster operator to be Available and settled
+      ansible.builtin.raw: |
+        set -o pipefail
+        {{ oc }} get co --no-headers | awk '$3!="True" || $4!="False" || $5!="False" {print $1}'
+      args:
+        executable: /bin/bash
+      register: co
+      changed_when: false
+      failed_when: false
+      retries: "{{ (co_wait_minutes | int * 2) }}"
+      delay: 30
+      until: co.rc == 0 and co.stdout | trim | length == 0
+
+    # ── the next deadline ────────────────────────────────────────────────────
+    - name: Read the new kubelet client certificate expiry (on the node)
+      ansible.builtin.raw: openssl x509 -enddate -noout -in /var/lib/kubelet/pki/kubelet-client-current.pem
+      register: cert_node
+      changed_when: false
+      failed_when: false
+      when: on_node | bool
+
+    - name: Read the new kubelet client certificate expiry (through oc debug)
+      ansible.builtin.raw: |
+        node=$({{ oc }} get nodes -o jsonpath='{.items[0].metadata.name}')
+        {{ oc }} debug "node/$node" -q -- chroot /host openssl x509 -enddate -noout -in /var/lib/kubelet/pki/kubelet-client-current.pem
+      args:
+        executable: /bin/bash
+      register: cert_api
+      changed_when: false
+      failed_when: false
+      when: not on_node | bool
+
+    - name: Is the boot-time auto-approver installed?
+      ansible.builtin.raw: "{{ oc }} get machineconfig 99-master-sno-csr-autoapprove -o name"
+      register: autoapprove
+      changed_when: false
+      failed_when: false
+
+    - name: Work out the next deadline and the auto-approver status
+      ansible.builtin.set_fact:
+        cert_expiry: >-
+          {{ ((cert_node.stdout if on_node | bool else cert_api.stdout) | default('')
+              | regex_replace('^notAfter=', '') | trim) or 'could not read it' }}
+        autoapprove_note: >-
+          {{ 'installed. If this still happened, check: journalctl -u sno-csr-autoapprove'
+             if autoapprove.rc == 0 else
+             'NOT installed. To automate this on a homelab node: oc apply -f manifests/99-master-sno-csr-autoapprove.yaml' }}
+
+    - name: Result
+      ansible.builtin.debug:
+        msg:
+          - "Node: {{ (approve.stdout_lines | last) | default('?') }}"
+          - "Operators not yet settled: {{ (co.stdout | trim | replace('\n', ', ')) or 'none, all settled' }}"
+          - "Kubelet client certificate now expires: {{ cert_expiry }}"
+          - "That is your next 'power on before' date. ./scripts/sno-shutdown.sh prints it at every shutdown."
+          - "Boot-time auto-approver: {{ autoapprove_note }}"

@@ -121,6 +121,7 @@ An NVMe drive for your data disk makes a noticeable difference in performance.
 
 ```
 sno-day2.yml              # Day 2 operations playbook — start here
+sno-recover.yml           # Recover after a long shutdown: approve kubelet CSRs, wait for operators
 vars/
   defaults.yml            # All tunable variables with documentation
 
@@ -163,8 +164,21 @@ cert-manager renews on its own.)
 
 ### Coming back after a long shutdown
 
-If the node has been off past its no-touch date, approve its certificate
-requests from the node itself:
+If the node has been off past its no-touch date, run the recovery playbook:
+
+```bash
+ansible-playbook sno-recover.yml -e sno_node=<node-ip>
+```
+
+It tries your kubeconfig first and falls back to SSH (as `core`, using the
+node's own recovery kubeconfig) when the API won't accept your login. It
+approves only this cluster's own kubelet requests — the client certificate,
+then the serving certificate that follows — and leaves any other pending CSR
+alone. Then it waits for the operators to settle and prints the new kubelet
+certificate expiry: your next "power on before" date. It needs nothing
+installed on the node.
+
+By hand, the same thing from the node itself:
 
 ```bash
 ssh core@<node-ip>
